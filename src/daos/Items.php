@@ -2,6 +2,10 @@
 
 namespace daos;
 
+use helpers\Authentication;
+use helpers\Configuration;
+use Monolog\Logger;
+
 /**
  * Class for accessing persistent saved items
  *
@@ -9,20 +13,32 @@ namespace daos;
  * @license    GPLv3 (https://www.gnu.org/licenses/gpl-3.0.html)
  * @author     Harald Lapp <harald.lapp@gmail.com>
  * @author     Tobias Zeising <tobias.zeising@aditu.de>
+ *
+ * @mixin ItemsInterface
  */
-class Items extends Database {
-    /** @var object Instance of backend specific items class */
-    private $backend = null;
+class Items {
+    /** @var ItemsInterface Instance of backend specific items class */
+    private $backend;
+
+    /** @var Authentication authentication helper */
+    private $authentication;
+
+    /** @var Configuration configuration */
+    private $configuration;
+
+    /** @var Logger */
+    private $logger;
 
     /**
      * Constructor.
      *
      * @return void
      */
-    public function __construct() {
-        $class = 'daos\\' . \F3::get('db_type') . '\\Items';
-        $this->backend = new $class();
-        parent::__construct();
+    public function __construct(Authentication $authentication, Configuration $configuration, Logger $logger, ItemsInterface $backend) {
+        $this->authentication = $authentication;
+        $this->backend = $backend;
+        $this->configuration = $configuration;
+        $this->logger = $logger;
     }
 
     /**
@@ -37,7 +53,7 @@ class Items extends Database {
         if (method_exists($this->backend, $name)) {
             return call_user_func_array([$this->backend, $name], $args);
         } else {
-            \F3::get('logger')->error('Unimplemented method for ' . \F3::get('db_type') . ': ' . $name);
+            $this->logger->error('Unimplemented method for ' . $this->configuration->dbType . ': ' . $name);
         }
     }
 
@@ -60,25 +76,15 @@ class Items extends Database {
     /**
      * returns items
      *
-     * @param mixed $options search, offset and filter params
+     * @param ItemOptions $options search, offset and filter params
      *
      * @return mixed items as array
      */
-    public function get($options = []) {
-        $options = array_merge(
-            [
-                'starred' => false,
-                'offset' => 0,
-                'search' => false,
-                'items' => \F3::get('items_perpage')
-            ],
-            $options
-        );
-
+    public function get(ItemOptions $options) {
         $items = $this->backend->get($options);
 
         // remove private posts with private tags
-        if (!\F3::get('auth')->showPrivateTags()) {
+        if (!$this->authentication->showPrivateTags()) {
             foreach ($items as $idx => $item) {
                 foreach ($item['tags'] as $tag) {
                     if (strpos(trim($tag), '@') === 0) {
@@ -91,7 +97,7 @@ class Items extends Database {
         }
 
         // remove posts with hidden tags
-        if (!isset($options['tag']) || strlen($options['tag']) === 0) {
+        if ($options->tag !== null) {
             foreach ($items as $idx => $item) {
                 foreach ($item['tags'] as $tag) {
                     if (strpos(trim($tag), '#') === 0) {

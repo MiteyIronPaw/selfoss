@@ -30,31 +30,34 @@ class prolinux extends fulltextrss {
                 'polls' => 'Umfragen',
                 'security' => 'Sicherheitsmeldungen',
                 'lugs' => 'Linux User Groups (LUGs)',
-                'comments' => 'Kommentare'
+                'comments' => 'Kommentare',
             ],
             'default' => 'main',
             'required' => true,
-            'validation' => []
-        ]
+            'validation' => [],
+        ],
     ];
 
     /**
      * addresses of feeds for the sections
      */
-    private $feedUrls = [
+    const FEED_URLS = [
         'main' => 'http://www.pro-linux.de/NB3/rss/1/4/atom_alles.xml',
         'news' => 'http://www.pro-linux.de/NB3/rss/2/4/atom_aktuell.xml',
         'polls' => 'http://www.pro-linux.de/NB3/rss/3/4/atom_umfragen.xml',
         'security' => 'http://www.pro-linux.de/NB3/rss/5/4/atom_sicherheit.xml',
         'lugs' => 'http://www.pro-linux.de/rss/7/4/atom_lugs.xml',
-        'comments' => 'http://www.pro-linux.de/NB3/rss/6/4/atom_kommentare.xml'
+        'comments' => 'http://www.pro-linux.de/NB3/rss/6/4/atom_kommentare.xml',
     ];
 
     public function load(array $params) {
         parent::load(['url' => $this->getXmlUrl($params)]);
     }
 
+    /**
+     * @return string
+     */
     public function getXmlUrl(array $params) {
-        return $this->feedUrls[$params['section']];
+        return self::FEED_URLS[$params['section']];
     }
 }

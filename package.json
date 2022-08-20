@@ -4,23 +4,21 @@
   "ver": "2.19-SNAPSHOT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/SSilence/selfoss.git"
-  },
-  "devDependencies": {
-    "archiver": "^3.0.0"
+    "url": "https://github.com/fossar/selfoss.git"
   },
   "engines": {
+    "nodejs": ">=10",
     "npm": ">=5"
   },
   "scripts": {
     "bump-version": "$NODE utils/bump-version.js",
     "check": "npm run check:client && npm run check:server",
     "check:client": "npm run lint:client",
-    "check:server": "npm run lint:server && npm run cs:server",
+    "check:server": "npm run lint:server && npm run cs:server && npm run test:server",
     "cs:server": "composer run-script cs",
     "dev": "npm run --prefix assets/ dev",
     "build": "npm run --prefix assets/ build",
-    "dist": "npm install --ignore-scripts && $NODE utils/create-zipball.js",
+    "dist": "python3 utils/create-zipball.py",
     "fix": "npm run fix:client && npm run fix:server",
     "fix:client": "npm run --prefix assets/ fix",
     "fix:server": "composer run-script fix",
@@ -29,6 +27,11 @@
     "install-dependencies:server": "composer install --dev",
     "lint:client": "npm run --prefix assets/ lint",
     "lint:server": "composer run-script lint",
+    "test:server": "composer run-script test",
+    "test:integration": "python3 tests/integration/run.py",
     "postinstall": "npm run install-dependencies"
-  }
+  },
+  "cacheDirectories": [
+    "assets/node_modules"
+  ]
 }

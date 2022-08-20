@@ -11,21 +11,6 @@ namespace daos\sqlite;
  */
 class Statements extends \daos\mysql\Statements {
     /**
-     * wrap insert statement to return id
-     *
-     * @param string $query sql statement
-     * @param array $params sql params
-     *
-     * @return int id after insert
-     */
-    public static function insert($query, array $params) {
-        \F3::get('db')->exec($query, $params);
-        $res = \F3::get('db')->exec('SELECT last_insert_rowid() as lastid');
-
-        return (int) $res[0]['lastid'];
-    }
-
-    /**
      * Return the statement required to update a datetime column to the current
      * datetime.
      *
@@ -61,16 +46,34 @@ class Statements extends \daos\mysql\Statements {
     }
 
     /**
-     * Convert a date string into a representation suitable for comparison by
+     * Convert a date into a representation suitable for comparison by
      * the database engine.
      *
-     * @param string $datestr ISO8601 datetime
+     * @param \DateTime $date datetime
      *
      * @return string representation of datetime
      */
-    public static function datetime($datestr) {
-        $date = new \DateTime($datestr);
+    public static function datetime(\DateTime $date) {
+        // SQLite does not support timezones.
+        // The client previously sent the local timezone
+        // but now it sends UTC time so we need to adjust it here
+        // to avoid fromDatetime mismatch.
+        // TODO: Switch to UTC everywhere.
+        $date->setTimeZone((new \DateTime())->getTimeZone());
 
         return $date->format('Y-m-d H:i:s');
+    }
+
+    /**
+     * Match a value to a regular expression.
+     *
+     * @param string $value value to match
+     * @param string $regex regular expression
+     *
+     * @return string expression for matching
+     */
+    public static function matchesRegex($value, $regex) {
+        // https://www.sqlite.org/lang_expr.html#the_like_glob_regexp_and_match_operators
+        return $value . ' REGEXP ' . $regex;
     }
 }

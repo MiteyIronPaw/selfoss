@@ -15,7 +15,7 @@ class Search {
      *
      * @param string $search
      *
-     * @return array search terms
+     * @return string[] search terms
      */
     public static function splitTerms($search) {
         if (strlen($search) === 0) {
@@ -23,6 +23,8 @@ class Search {
         }
 
         //split search terms by space (but save it inside quotes)...
-        return str_getcsv(trim($search), ' ');
+        return array_filter(str_getcsv(trim($search), ' '), function($item) {
+            return $item !== '';
+        });
     }
 }

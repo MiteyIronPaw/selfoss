@@ -2,6 +2,7 @@
 
 namespace helpers;
 
+use Dice\Dice;
 use spouts\spout;
 
 /**
@@ -13,13 +14,20 @@ use spouts\spout;
  * @author     Tobias Zeising <tobias.zeising@aditu.de>
  */
 class SpoutLoader {
-    /** @var ?array array of available spouts */
+    /** @var ?array<class-string<spout>, spout> array of available spouts */
     private $spouts = null;
+
+    /** @var Dice dependency injection container */
+    private $dic;
+
+    public function __construct(Dice $dice) {
+        $this->dic = $dice;
+    }
 
     /**
      * returns all available spouts
      *
-     * @return array available spouts
+     * @return array<class-string<spout>, spout> available spouts
      */
     public function all() {
         $this->readSpouts();
@@ -35,11 +43,20 @@ class SpoutLoader {
      * @return ?spout an instance of the spout, null if this spout doesn't exist
      */
     public function get($spout) {
-        $this->readSpouts();
-        if (!array_key_exists($spout, $this->spouts)) {
+        if (!class_exists($spout)) {
             return null;
-        } else {
-            return $this->spouts[$spout];
+        }
+
+        try {
+            $class = $this->dic->create($spout);
+
+            if (is_subclass_of($class, spout::class)) {
+                return $class;
+            } else {
+                return null;
+            }
+        } catch (\ReflectionException $e) {
+            return null;
         }
     }
 
@@ -54,7 +71,7 @@ class SpoutLoader {
      */
     protected function readSpouts() {
         if ($this->spouts === null) {
-            $this->spouts = $this->loadClasses(__DIR__ . '/../spouts', 'spouts\spout');
+            $this->spouts = $this->loadClasses(__DIR__ . '/../spouts', spout::class);
 
             // sort spouts by name
             uasort($this->spouts, ['self', 'compareSpoutsByName']);
@@ -64,12 +81,14 @@ class SpoutLoader {
     /**
      * returns all classes which extends a given class
      *
-     * @param string $location the path where all spouts in
-     * @param string $parentclass the parent class which files must extend
+     * @template P
      *
-     * @return array with classname (key) and an instance of a class (value)
+     * @param string $location the path where all spouts in
+     * @param class-string<P> $parentClassName the parent class which files must extend
+     *
+     * @return array<class-string<P>, P> list of instantiated spouts associated to their class names
      */
-    protected function loadClasses($location, $parentclass) {
+    protected function loadClasses($location, $parentClassName) {
         $return = [];
 
         foreach (scandir($location) as $dir) {
@@ -79,12 +98,14 @@ class SpoutLoader {
                     // only scan visible .php files
                     if (is_file($location . '/' . $dir . '/' . $file) && substr($file, 0, 1) !== '.' && strpos($file, '.php') !== false) {
                         // create reflection class
-                        $classname = 'spouts\\' . $dir . '\\' . str_replace('.php', '', $file);
-                        $class = new \ReflectionClass($classname);
+                        /** @var class-string<P> */
+                        $className = 'spouts\\' . $dir . '\\' . str_replace('.php', '', $file);
 
                         // register widget
-                        if ($class->isSubclassOf(new \ReflectionClass($parentclass))) {
-                            $return[$classname] = $class->newInstance();
+                        if (is_subclass_of($className, $parentClassName)) {
+                            /** @var P */
+                            $class = $this->dic->create($className);
+                            $return[$className] = $class;
                         }
                     }
                 }

@@ -1,5 +1,7 @@
+import React from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import selfoss from './selfoss-base';
-import * as clipboard from 'clipboard-polyfill';
+import * as icons from './icons';
 
 selfoss.shares = {
     initialized: false,
@@ -16,56 +18,56 @@ selfoss.shares = {
         this.initialized = true;
 
         if ('share' in navigator) {
-            selfoss.shares.register('share', selfoss.ui._('share_native_label'), 'a', this.fontawesomeIcon('fas fa-share-alt'), ({url, title}) => {
+            selfoss.shares.register('share', selfoss.app._('share_native_label'), 'a', <FontAwesomeIcon icon={icons.share} />, ({url, title}) => {
                 navigator.share({
                     title,
                     url
                 }).catch((e) => {
                     if (e.name === 'AbortError') {
-                        selfoss.ui.showError(selfoss.ui._('error_share_native_abort'));
+                        selfoss.app.showError(selfoss.app._('error_share_native_abort'));
                     } else {
-                        selfoss.ui.showError(selfoss.ui._('error_share_native'));
+                        selfoss.app.showError(selfoss.app._('error_share_native'));
                     }
                 });
             });
         }
 
-        this.register('diaspora', selfoss.ui._('share_diaspora_label'), 'd', this.fontawesomeIcon('fab fa-diaspora'), ({url, title}) => {
-            window.open('https://share.diasporafoundation.org/?url=' + encodeURIComponent(url) + '&title=' + encodeURIComponent(title));
+        this.register('diaspora', selfoss.app._('share_diaspora_label'), 'd', <FontAwesomeIcon icon={icons.diaspora} />, ({url, title}) => {
+            window.open('https://share.diasporafoundation.org/?url=' + encodeURIComponent(url) + '&title=' + encodeURIComponent(title), undefined, 'noreferrer');
         });
-        this.register('twitter', selfoss.ui._('share_twitter_label'), 't', this.fontawesomeIcon('fab fa-twitter'), ({url, title}) => {
-            window.open('https://twitter.com/intent/tweet?source=webclient&text=' + encodeURIComponent(title) + ' ' + encodeURIComponent(url));
+        this.register('twitter', selfoss.app._('share_twitter_label'), 't', <FontAwesomeIcon icon={icons.twitter} />, ({url, title}) => {
+            window.open('https://twitter.com/intent/tweet?source=webclient&text=' + encodeURIComponent(title) + ' ' + encodeURIComponent(url), undefined, 'noreferrer');
         });
-        this.register('facebook', selfoss.ui._('share_facebook_label'), 'f', this.fontawesomeIcon('fab fa-facebook-square'), ({url, title}) => {
-            window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(url) + '&t=' + encodeURIComponent(title));
+        this.register('facebook', selfoss.app._('share_facebook_label'), 'f', <FontAwesomeIcon icon={icons.facebook} />, ({url, title}) => {
+            window.open('https://www.facebook.com/sharer/sharer.php?u=' + encodeURIComponent(url) + '&t=' + encodeURIComponent(title), undefined, 'noreferrer');
         });
-        this.register('pocket', selfoss.ui._('share_pocket_label'), 'p', this.fontawesomeIcon('fab fa-get-pocket'), ({url, title}) => {
-            window.open('https://getpocket.com/save?url=' + encodeURIComponent(url) + '&title=' + encodeURIComponent(title));
+        this.register('pocket', selfoss.app._('share_pocket_label'), 'p', <FontAwesomeIcon icon={icons.pocket} />, ({url, title}) => {
+            window.open('https://getpocket.com/save?url=' + encodeURIComponent(url) + '&title=' + encodeURIComponent(title), undefined, 'noreferrer');
         });
 
         if (selfoss.config.wallabag !== null) {
-            this.register('wallabag', selfoss.ui._('share_wallabag_label'), 'w', this.fontawesomeIcon('fac fa-wallabag'), ({url}) => {
+            this.register('wallabag', selfoss.app._('share_wallabag_label'), 'w', <FontAwesomeIcon icon={icons.wallabag} />, ({url}) => {
                 if (selfoss.config.wallabag.version === 2) {
-                    window.open(selfoss.config.wallabag.url + '/bookmarklet?url=' + encodeURIComponent(url));
+                    window.open(selfoss.config.wallabag.url + '/bookmarklet?url=' + encodeURIComponent(url), undefined, 'noreferrer');
                 } else {
-                    window.open(selfoss.config.wallabag.url + '/?action=add&url=' + btoa(url));
+                    window.open(selfoss.config.wallabag.url + '/?action=add&url=' + btoa(url), undefined, 'noreferrer');
                 }
             });
         }
 
         if (selfoss.config.wordpress !== null) {
-            this.register('wordpress', selfoss.ui._('share_wordpress_label'), 's', this.fontawesomeIcon('fab fa-wordpress-simple'), ({url, title}) => {
-                window.open(selfoss.config.wordpress + '/wp-admin/press-this.php?u=' + encodeURIComponent(url) + '&t=' + encodeURIComponent(title));
+            this.register('wordpress', selfoss.app._('share_wordpress_label'), 's', <FontAwesomeIcon icon={icons.wordpress} />, ({url, title}) => {
+                window.open(selfoss.config.wordpress + '/wp-admin/press-this.php?u=' + encodeURIComponent(url) + '&t=' + encodeURIComponent(title), undefined, 'noreferrer');
             });
         }
 
-        this.register('mail', selfoss.ui._('share_mail_label'), 'e', this.fontawesomeIcon('fas fa-envelope'), ({url, title}) => {
+        this.register('mail', selfoss.app._('share_mail_label'), 'e', <FontAwesomeIcon icon={icons.email} />, ({url, title}) => {
             document.location.href = 'mailto:?body=' + encodeURIComponent(url) + '&subject=' + encodeURIComponent(title);
         });
 
-        this.register('copy', selfoss.ui._('share_copy_label'), 'c', this.fontawesomeIcon('fas fa-copy'), ({url}) => {
-            clipboard.writeText(url).then(() => {
-                selfoss.ui.showMessage(selfoss.ui._('info_url_copied'));
+        this.register('copy', selfoss.app._('share_copy_label'), 'c', <FontAwesomeIcon icon={icons.copy} />, ({url}) => {
+            navigator.clipboard.writeText(url).then(() => {
+                selfoss.app.showMessage(selfoss.app._('info_url_copied'));
             });
         });
     },
@@ -78,7 +80,7 @@ selfoss.shares = {
             name,
             label,
             id,
-            icon: icon,
+            icon,
             callback: sharer
         };
         this.names[id] = name;
@@ -89,21 +91,7 @@ selfoss.shares = {
         return this.enabledShares.filter(id => id in this.names).map(id => this.sharers[this.names[id]]);
     },
 
-    share(name, {url, title}) {
-        this.sharers[name].callback({url, title});
-    },
-
-    buildLinks(shares, linkBuilder) {
-        let links = '';
-        if (shares != null) {
-            for (let sharer of shares) {
-                links += linkBuilder(sharer);
-            }
-        }
-        return links;
-    },
-
-    fontawesomeIcon(service) {
-        return '<i class="' + service + '"></i>';
+    share(name, {id, url, title}) {
+        this.sharers[name].callback({id, url, title});
     }
 };

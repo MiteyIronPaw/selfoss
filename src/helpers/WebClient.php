@@ -6,6 +6,7 @@ use Exception;
 use Fossar\GuzzleTranscoder\GuzzleTranscoder;
 use GuzzleHttp;
 use GuzzleHttp\HandlerStack;
+use Monolog\Logger;
 
 /**
  * Helper class for web request
@@ -15,29 +16,51 @@ use GuzzleHttp\HandlerStack;
  * @author     Alexandre Rossi <alexandre.rossi@gmail.com>
  */
 class WebClient {
-    /** @var GuzzleHttp\Client */
-    private static $httpClient;
+    /** @var Configuration configuration */
+    private $configuration;
+
+    /** @var ?GuzzleHttp\Client */
+    private $httpClient = null;
+
+    /** @var Logger */
+    private $logger;
+
+    public function __construct(Configuration $configuration, Logger $logger) {
+        $this->configuration = $configuration;
+        $this->logger = $logger;
+    }
 
     /**
      * Provide a HTTP client for use by spouts
      *
      * @return GuzzleHttp\Client
      */
-    public static function getHttpClient() {
-        if (!isset(self::$httpClient)) {
+    public function getHttpClient() {
+        if ($this->httpClient === null) {
             $stack = HandlerStack::create();
             $stack->push(new GuzzleTranscoder());
 
-            if (\F3::get('logger_level') === 'DEBUG') {
+            if ($this->configuration->loggerLevel === 'DEBUG') {
+                if ($this->configuration->debug === 0) {
+                    $logFormat = GuzzleHttp\MessageFormatter::SHORT;
+                } elseif ($this->configuration->debug === 1) {
+                    $logFormat = ">>>>>>>>\n{req_headers}\n<<<<<<<<\n{res_headers}\n--------\n{error}";
+                } else {
+                    $logFormat = GuzzleHttp\MessageFormatter::DEBUG;
+                }
+
                 $logger = GuzzleHttp\Middleware::log(
-                    \F3::get('logger'),
-                    new GuzzleHttp\MessageFormatter(\F3::get('DEBUG') != 0 ? GuzzleHttp\MessageFormatter::DEBUG : GuzzleHttp\MessageFormatter::SHORT),
+                    $this->logger,
+                    new GuzzleHttp\MessageFormatter($logFormat),
                     \Psr\Log\LogLevel::DEBUG
                 );
                 $stack->push($logger);
             }
 
             $httpClient = new GuzzleHttp\Client([
+                'allow_redirects' => [
+                    'track_redirects' => true,
+                ],
                 'headers' => [
                     'User-Agent' => self::getUserAgent(),
                 ],
@@ -45,21 +68,21 @@ class WebClient {
                 'timeout' => 60, // seconds
             ]);
 
-            self::$httpClient = $httpClient;
+            $this->httpClient = $httpClient;
         }
 
-        return self::$httpClient;
+        return $this->httpClient;
     }
 
     /**
      * get the user agent to use for web based spouts
      *
-     * @param ?string $agentInfo
+     * @param ?string[] $agentInfo
      *
      * @return string the user agent string for this spout
      */
-    public static function getUserAgent($agentInfo = null) {
-        $userAgent = 'Selfoss/' . \F3::get('version');
+    public function getUserAgent($agentInfo = null) {
+        $userAgent = 'Selfoss/' . SELFOSS_VERSION;
 
         if ($agentInfo === null) {
             $agentInfo = [];
@@ -81,8 +104,8 @@ class WebClient {
      *
      * @return string request data
      */
-    public static function request($url, $agentInfo = null) {
-        $http = self::getHttpClient();
+    public function request($url, $agentInfo = null) {
+        $http = $this->getHttpClient();
         $response = $http->get($url);
         $data = (string) $response->getBody();
 
@@ -91,5 +114,21 @@ class WebClient {
         }
 
         return $data;
+    }
+
+    /**
+     * Get effective URL of the response.
+     * RedirectMiddleware will need to be enabled for this to work.
+     *
+     * @param string $url requested URL, to use as a fallback
+     * @param GuzzleHttp\Psr7\Response $response response to inspect
+     *
+     * @return string last URL we were redirected to
+     */
+    public static function getEffectiveUrl($url, GuzzleHttp\Psr7\Response $response) {
+        // Sequence of fetched URLs
+        $urlStack = array_merge([$url], $response->getHeader(\GuzzleHttp\RedirectMiddleware::HISTORY_HEADER));
+
+        return $urlStack[count($urlStack) - 1];
     }
 }

@@ -9,7 +9,7 @@ namespace spouts\rss;
  * @license    GPLv3 (https://www.gnu.org/licenses/gpl-3.0.html)
  * @author     Tobias Zeising <tobias.zeising@aditu.de>
  */
-class golem extends feed {
+class golem extends fulltextrss {
     /** @var string name of spout */
     public $name = '[German] golem.de';
 
@@ -40,20 +40,19 @@ class golem extends feed {
                 'networld' => 'Networld',
                 'entertainment' => 'Entertainment',
                 'tk' => 'TK',
-                'wirtschaft' => 'Wirtschaft',
                 'ecommerce' => 'E-Commerce',
-                'forum' => 'Forumsbeiträge'
+                'forum' => 'Forumsbeiträge',
             ],
             'default' => 'main',
             'required' => true,
-            'validation' => []
-        ]
+            'validation' => [],
+        ],
     ];
 
     /**
      * addresses of feeds for the sections
      */
-    private $feedUrls = [
+    const FEED_URLS = [
         'main' => 'https://rss.golem.de/rss.php?feed=RSS2.0',
         'audiovideo' => 'https://rss.golem.de/rss.php?tp=av&feed=RSS2.0',
         'foto' => 'https://rss.golem.de/rss.php?tp=foto&feed=RSS2.0',
@@ -72,43 +71,18 @@ class golem extends feed {
         'networld' => 'https://rss.golem.de/rss.php?r=nw&feed=RSS2.0',
         'entertainment' => 'https://rss.golem.de/rss.php?r=et&feed=RSS2.0',
         'tk' => 'https://rss.golem.de/rss.php?r=tk&feed=RSS2.0',
-        'wirtschaft' => 'https://rss.golem.de/rss.php?r=wi&feed=RSS2.0',
         'ecommerce' => 'https://rss.golem.de/rss.php?r=ec&feed=RSS2.0',
-        'forum' => 'https://forum.golem.de/rss.php?feed=RSS2.0'
+        'forum' => 'https://forum.golem.de/rss.php?feed=RSS2.0',
     ];
 
     public function load(array $params) {
         parent::load(['url' => $this->getXmlUrl($params)]);
     }
 
-    public function getXmlUrl(array $params) {
-        return $this->feedUrls[$params['section']];
-    }
-
-    public function getContent() {
-        if ($this->items !== null && $this->valid()) {
-            $originalContent = $this->cleanContent(file_get_contents($this->getLink()));
-            preg_match_all('|<!--content-->(.*?)<!--/content-->|ims', $originalContent, $matches, PREG_PATTERN_ORDER);
-            if (is_array($matches) && is_array($matches[0]) && isset($matches[0][0])) {
-                return $matches[0][0];
-            }
-        }
-
-        return parent::getContent();
-    }
-
     /**
-     * clean the content
-     *
-     * @param string $content original content
-     *
-     * @return string cleaned content
+     * @return string
      */
-    private function cleanContent($content) {
-        $content = preg_replace('|<!-- begin ad tag \(tile=4\) -->(.*?)<!-- end ad tag \(tile=4\) -->|ims', '', $content);
-        $content = preg_replace('|<figure id="([^"]+)"></figure>|ims', '', $content);
-        $content = preg_replace('|<a class="golem-gallery2-nojs" href="([^"]+)">(.*?)<img src="([^"]+)" alt="([^"]+)" title="([^"]+)" data-src="([^"]+)" data-src-full="([^"]+)">(.*?)</a>|ims', '<p><a href="$1" target="_blank" rel="noopener noreferrer"><img src="$3" alt="$4" title="$5" /></a></p>', $content);
-
-        return $content;
+    public function getXmlUrl(array $params) {
+        return self::FEED_URLS[$params['section']];
     }
 }

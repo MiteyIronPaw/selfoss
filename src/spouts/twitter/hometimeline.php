@@ -23,38 +23,38 @@ class hometimeline extends \spouts\twitter\usertimeline {
             'type' => 'text',
             'default' => '',
             'required' => true,
-            'validation' => ['notempty']
+            'validation' => ['notempty'],
         ],
         'consumer_secret' => [
             'title' => 'Consumer Secret',
             'type' => 'password',
             'default' => '',
             'required' => true,
-            'validation' => ['notempty']
+            'validation' => ['notempty'],
         ],
         'access_key' => [
             'title' => 'Access Key',
             'type' => 'password',
             'default' => '',
             'required' => true,
-            'validation' => ['notempty']
+            'validation' => ['notempty'],
         ],
         'access_secret' => [
             'title' => 'Access Secret',
             'type' => 'password',
             'default' => '',
             'required' => true,
-            'validation' => ['notempty']
-        ]
+            'validation' => ['notempty'],
+        ],
     ];
 
     public function load(array $params) {
-        $this->client = self::getHttpClient($params['consumer_key'], $params['consumer_secret'], $params['access_key'], $params['access_secret']);
+        $this->client = $this->getHttpClient($params['consumer_key'], $params['consumer_secret'], $params['access_key'], $params['access_secret']);
 
         $this->items = $this->fetchTwitterTimeline('statuses/home_timeline');
 
         $this->htmlUrl = 'https://twitter.com/';
 
-        $this->spoutTitle = 'Home timeline';
+        $this->title = 'Home timeline';
     }
 }

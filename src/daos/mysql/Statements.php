@@ -2,6 +2,8 @@
 
 namespace daos\mysql;
 
+use daos\DatabaseInterface;
+
 /**
  * MySQL specific statements
  *
@@ -9,27 +11,12 @@ namespace daos\mysql;
  * @license    GPLv3 (https://www.gnu.org/licenses/gpl-3.0.html)
  * @author     Alexandre Rossi <alexandre.rossi@gmail.com>
  */
-class Statements {
-    /**
-     * wrap insert statement to return id
-     *
-     * @param string $query sql statement
-     * @param array $params sql params
-     *
-     * @return int id after insert
-     */
-    public static function insert($query, array $params) {
-        \F3::get('db')->exec($query, $params);
-        $res = \F3::get('db')->exec('SELECT LAST_INSERT_ID() as lastid');
-
-        return (int) $res[0]['lastid'];
-    }
-
+class Statements implements \daos\StatementsInterface {
     /**
      * null first for order by clause
      *
      * @param string $column column to concat
-     * @param string $order
+     * @param 'DESC'|'ASC' $order
      *
      * @return string full statement
      */
@@ -71,6 +58,17 @@ class Statements {
     }
 
     /**
+     * Combine expressions using OR operator.
+     *
+     * @param string ...$exprs expressions to combine
+     *
+     * @return string combined expression
+     */
+    public static function exprOr(...$exprs) {
+        return '(' . implode(' OR ', $exprs) . ')';
+    }
+
+    /**
      * check if CSV column matches a value.
      *
      * @param string $column CSV column to check
@@ -90,30 +88,19 @@ class Statements {
      * check column against int list.
      *
      * @param string $column column to check
-     * @param array $ints of string or int values to match column against
+     * @param int[] $ints list of ints to match column against
      *
      * @return ?string full statement
      */
     public static function intRowMatches($column, array $ints) {
         // checks types
-        if (!is_array($ints) && count($ints) === 0) {
+        if (count($ints) === 0) {
             return null;
         }
-        $all_ints = [];
-        foreach ($ints as $ints_str) {
-            $i = (int) $ints_str;
-            if ($i > 0) {
-                $all_ints[] = $i;
-            }
-        }
 
-        if (count($all_ints) > 0) {
-            $comma_ints = implode(',', $all_ints);
+        $comma_ints = implode(',', $ints);
 
-            return $column . " IN ($comma_ints)";
-        }
-
-        return null;
+        return $column . " IN ($comma_ints)";
     }
 
     /**
@@ -140,15 +127,16 @@ class Statements {
     }
 
     /**
-     * Convert a date string into a representation suitable for comparison by
+     * Convert a date into a representation suitable for comparison by
      * the database engine.
      *
-     * @param string $datestr ISO8601 datetime
+     * @param \DateTime $date datetime
      *
      * @return string representation of datetime
      */
-    public static function datetime($datestr) {
-        return $datestr; // mysql supports ISO8601 datetime comparisons
+    public static function datetime(\DateTime $date) {
+        // mysql supports ISO8601 datetime comparisons
+        return $date->format(\DateTime::ATOM);
     }
 
     /**
@@ -161,26 +149,34 @@ class Statements {
      * @return array of associative array representing row results having
      *         expected types
      */
-    public function ensureRowTypes(array $rows, array $expectedRowTypes) {
+    public static function ensureRowTypes(array $rows, array $expectedRowTypes) {
         foreach ($rows as $rowIndex => $row) {
             foreach ($expectedRowTypes as $columnIndex => $type) {
                 if (array_key_exists($columnIndex, $row)) {
                     switch ($type) {
-                        case \daos\PARAM_INT:
+                        case DatabaseInterface::PARAM_INT:
                             $value = (int) $row[$columnIndex];
                             break;
-                        case \daos\PARAM_BOOL:
-                            if ($row[$columnIndex] === '1') {
+                        case DatabaseInterface::PARAM_BOOL:
+                            // PDO returns integer in PHP ≥ 8.1.
+                            if ($row[$columnIndex] === 1 || $row[$columnIndex] === '1') {
                                 $value = true;
                             } else {
                                 $value = false;
                             }
                             break;
-                        case \daos\PARAM_CSV:
+                        case DatabaseInterface::PARAM_CSV:
                             if ($row[$columnIndex] === '') {
                                 $value = [];
                             } else {
                                 $value = explode(',', $row[$columnIndex]);
+                            }
+                            break;
+                        case DatabaseInterface::PARAM_DATETIME:
+                            if (empty($row[$columnIndex])) {
+                                $value = null;
+                            } else {
+                                $value = new \DateTime($row[$columnIndex]);
                             }
                             break;
                         default:
@@ -203,7 +199,7 @@ class Statements {
      *
      * @return string
      */
-    public function csvRow(array $a) {
+    public static function csvRow(array $a) {
         $filtered = [];
         foreach ($a as $s) {
             $t = trim($s);
@@ -213,5 +209,18 @@ class Statements {
         }
 
         return implode(',', $filtered);
+    }
+
+    /**
+     * Match a value to a regular expression.
+     *
+     * @param string $value value to match
+     * @param string $regex regular expression
+     *
+     * @return string expression for matching
+     */
+    public static function matchesRegex($value, $regex) {
+        // https://dev.mysql.com/doc/refman/5.7/en/regexp.html
+        return $value . ' REGEXP ' . $regex;
     }
 }

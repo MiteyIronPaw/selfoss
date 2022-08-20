@@ -6,6 +6,7 @@ use GuzzleHttp;
 use GuzzleHttp\Exception\BadResponseException;
 use GuzzleHttp\Subscriber\Oauth\Oauth1;
 use helpers\WebClient;
+use spouts\Item;
 use stdClass;
 
 /**
@@ -16,8 +17,6 @@ use stdClass;
  * @author     Tobias Zeising <tobias.zeising@aditu.de>
  */
 class usertimeline extends \spouts\spout {
-    use \helpers\ItemsIterator;
-
     /** @var string name of source */
     public $name = 'Twitter: user timeline';
 
@@ -31,36 +30,36 @@ class usertimeline extends \spouts\spout {
             'type' => 'text',
             'default' => '',
             'required' => true,
-            'validation' => ['notempty']
+            'validation' => ['notempty'],
         ],
         'consumer_secret' => [
             'title' => 'Consumer Secret',
             'type' => 'password',
             'default' => '',
             'required' => true,
-            'validation' => ['notempty']
+            'validation' => ['notempty'],
         ],
         'access_token' => [
             'title' => 'Access Token (optional)',
             'type' => 'text',
             'default' => '',
             'required' => false,
-            'validation' => []
+            'validation' => [],
         ],
         'access_token_secret' => [
             'title' => 'Access Token Secret (optional)',
             'type' => 'password',
             'default' => '',
             'required' => false,
-            'validation' => []
+            'validation' => [],
         ],
         'username' => [
             'title' => 'Username',
             'type' => 'text',
             'default' => '',
             'required' => true,
-            'validation' => ['notempty']
-        ]
+            'validation' => ['notempty'],
+        ],
     ];
 
     /** @var string URL of the source */
@@ -69,20 +68,33 @@ class usertimeline extends \spouts\spout {
     /** @var ?GuzzleHttp\Client HTTP client configured with Twitter OAuth support */
     protected $client = null;
 
+    /** @var WebClient */
+    private $webClient;
+
+    /** @var ?string title of the source */
+    protected $title = null;
+
+    /** @var stdClass[] current fetched items */
+    protected $items = [];
+
+    public function __construct(WebClient $webClient) {
+        $this->webClient = $webClient;
+    }
+
     /**
      * Provide a HTTP client for use by spouts
      *
      * @param string $consumerKey
      * @param string $consumerSecret
-     * @param string $accessToken
-     * @param string $accessTokenSecret
+     * @param ?string $accessToken
+     * @param ?string $accessTokenSecret
      *
      * @return GuzzleHttp\Client
      */
-    public static function getHttpClient($consumerKey, $consumerSecret, $accessToken, $accessTokenSecret) {
+    public function getHttpClient($consumerKey, $consumerSecret, $accessToken, $accessTokenSecret) {
         $access_token_used = !empty($accessToken) && !empty($accessTokenSecret);
 
-        $oldClient = WebClient::getHttpClient();
+        $oldClient = $this->webClient->getHttpClient();
         $config = $oldClient->getConfig();
 
         $config['base_uri'] = 'https://api.twitter.com/1.1/';
@@ -107,7 +119,7 @@ class usertimeline extends \spouts\spout {
      * @param string $endpoint API endpoint to use
      * @param array $params extra query arguments to pass to the API call
      *
-     * @throws Exception when API request fails
+     * @throws \Exception when API request fails
      * @throws GuzzleHttp\Exception\RequestException when HTTP request fails for API-unrelated reasons
      *
      * @return stdClass[]
@@ -127,6 +139,10 @@ class usertimeline extends \spouts\spout {
             ]);
 
             $timeline = json_decode((string) $response->getBody());
+
+            if (isset($timeline->statuses)) {
+                $timeline = $timeline->statuses;
+            }
 
             if (!is_array($timeline)) {
                 throw new \Exception('Invalid twitter response');
@@ -155,7 +171,7 @@ class usertimeline extends \spouts\spout {
     //
 
     public function load(array $params) {
-        $this->client = self::getHttpClient($params['consumer_key'], $params['consumer_secret'], $params['access_token'], $params['access_token_secret']);
+        $this->client = $this->getHttpClient($params['consumer_key'], $params['consumer_secret'], isset($params['access_token']) ? $params['access_token'] : null, isset($params['access_token_secret']) ? $params['access_token_secret'] : null);
 
         $this->items = $this->fetchTwitterTimeline('statuses/user_timeline', [
             'screen_name' => $params['username'],
@@ -163,124 +179,119 @@ class usertimeline extends \spouts\spout {
 
         $this->htmlUrl = 'https://twitter.com/' . urlencode($params['username']);
 
-        $this->spoutTitle = "@{$params['username']}";
-    }
-
-    public function getHtmlUrl() {
-        if (isset($this->htmlUrl)) {
-            return $this->htmlUrl;
-        }
-
-        return null;
-    }
-
-    public function getId() {
-        if ($this->items !== null) {
-            return @current($this->items)->id_str;
-        }
-
-        return null;
+        $this->title = "@{$params['username']}";
     }
 
     public function getTitle() {
-        if ($this->items !== null) {
-            $item = @current($this->items);
-            $rt = '';
-            if (isset($item->retweeted_status)) {
-                $rt = ' (RT ' . $item->user->name . ')';
-                $item = $item->retweeted_status;
-            }
-
-            $entities = self::formatEntities($item->entities);
-            $tweet = $item->user->name . $rt . ':<br>' . self::replaceEntities($item->full_text, $entities);
-
-            return $tweet;
-        }
-
-        return null;
+        return $this->title;
     }
 
-    public function getContent() {
+    public function getHtmlUrl() {
+        return $this->htmlUrl;
+    }
+
+    /**
+     * @return \Generator<Item<null>> list of items
+     */
+    public function getItems() {
+        foreach ($this->items as $item) {
+            $id = $item->id_str;
+            $title = $this->getTweetTitle($item);
+            $content = $this->getContent($item);
+            $thumbnail = $this->getThumbnail($item);
+            $icon = $this->getTweetIcon($item);
+            $link = 'https://twitter.com/' . $item->user->screen_name . '/status/' . $item->id_str;
+            // Format of `created_at` field not specified, looks US-centric.
+            // https://developer.twitter.com/en/docs/twitter-api/v1/data-dictionary/object-model/tweet
+            $date = new \DateTimeImmutable($item->created_at);
+            $author = null;
+
+            yield new Item(
+                $id,
+                $title,
+                $content,
+                $thumbnail,
+                $icon,
+                $link,
+                $date,
+                $author
+            );
+        }
+    }
+
+    /**
+     * @return string
+     */
+    private function getTweetTitle(stdClass $item) {
+        $rt = '';
+        if (isset($item->retweeted_status)) {
+            $rt = ' (RT ' . $item->user->name . ')';
+            $item = $item->retweeted_status;
+        }
+
+        $entities = self::formatEntities($item->entities);
+        $tweet = $item->user->name . $rt . ':<br>' . self::replaceEntities($item->full_text, $entities);
+
+        return $tweet;
+    }
+
+    /**
+     * @return string
+     */
+    private function getContent(stdClass $item) {
         $result = '';
 
-        if ($this->items !== false) {
-            $item = current($this->items);
-            if (isset($item->retweeted_status)) {
-                $item = $item->retweeted_status;
-            }
+        if (isset($item->retweeted_status)) {
+            $item = $item->retweeted_status;
+        }
 
-            if (isset($item->extended_entities) && isset($item->extended_entities->media) && count($item->extended_entities->media) > 0) {
-                foreach ($item->extended_entities->media as $media) {
-                    if ($media->type === 'photo') {
-                        $result .= '<p><a href="' . $media->media_url_https . ':large"><img src="' . $media->media_url_https . ':small" alt=""></a></p>' . PHP_EOL;
-                    }
+        if (isset($item->extended_entities) && isset($item->extended_entities->media) && count($item->extended_entities->media) > 0) {
+            foreach ($item->extended_entities->media as $media) {
+                if ($media->type === 'photo') {
+                    $result .= '<p><a href="' . $media->media_url_https . ':large"><img src="' . $media->media_url_https . ':small" alt=""></a></p>' . PHP_EOL;
                 }
             }
+        }
 
-            if (isset($item->quoted_status)) {
-                $quoted = $item->quoted_status;
-                $tweet_url = 'https://twitter.com/' . $quoted->user->screen_name . '/status/' . $quoted->status_id_str;
-                $entities = self::formatEntities($quoted->entities);
+        if (isset($item->quoted_status)) {
+            $quoted = $item->quoted_status;
+            $entities = self::formatEntities($quoted->entities);
 
-                $result .= '<a href="https://twitter.com/' . $quoted->user->screen_name . '">@' . $quoted->user->screen_name . '</a>:';
-                $result .= '<blockquote>' . self::replaceEntities($quoted->full_text, $entities) . '</blockquote>';
-            }
+            $result .= '<a href="https://twitter.com/' . $quoted->user->screen_name . '">@' . $quoted->user->screen_name . '</a>:';
+            $result .= '<blockquote>' . self::replaceEntities($quoted->full_text, $entities) . '</blockquote>';
         }
 
         return $result;
     }
 
-    public function getIcon() {
-        if ($this->items !== null) {
-            $item = @current($this->items);
-            if (isset($item->retweeted_status)) {
-                $item = $item->retweeted_status;
-            }
+    /**
+     * @return string
+     */
+    private function getTweetIcon(stdClass $item) {
+        if (isset($item->retweeted_status)) {
+            $item = $item->retweeted_status;
+        }
 
-            return $item->user->profile_image_url_https;
+        return $item->user->profile_image_url_https;
+    }
+
+    /**
+     * @return ?string
+     */
+    private function getThumbnail(stdClass $item) {
+        if (isset($item->retweeted_status)) {
+            $item = $item->retweeted_status;
+        }
+        if (isset($item->entities->media) && $item->entities->media[0]->type === 'photo') {
+            return $item->entities->media[0]->media_url_https;
         }
 
         return null;
-    }
-
-    public function getLink() {
-        if ($this->items !== null) {
-            $item = @current($this->items);
-
-            return 'https://twitter.com/' . $item->user->screen_name . '/status/' . $item->id_str;
-        }
-
-        return null;
-    }
-
-    public function getThumbnail() {
-        if ($this->items !== null) {
-            $item = current($this->items);
-            if (isset($item->retweeted_status)) {
-                $item = $item->retweeted_status;
-            }
-            if (isset($item->entities->media) && $item->entities->media[0]->type === 'photo') {
-                return $item->entities->media[0]->media_url_https;
-            }
-        }
-
-        return '';
-    }
-
-    public function getDate() {
-        if ($this->items !== null) {
-            $date = date('Y-m-d H:i:s', strtotime(@current($this->items)->created_at));
-        }
-        if (strlen($date) === 0) {
-            $date = date('Y-m-d H:i:s');
-        }
-
-        return $date;
     }
 
     public function destroy() {
         unset($this->items);
-        $this->items = null;
+        $this->items = [];
     }
 
     /**
@@ -316,7 +327,7 @@ class usertimeline extends \spouts\spout {
             if ($skipUntilCp <= $cpi) {
                 if (isset($entities[$cpi])) {
                     $entity = $entities[$cpi];
-                    $appended = '<a href="' . $entity['url'] . '" target="_blank" rel="noopener noreferrer">' . $entity['text'] . '</a>';
+                    $appended = '<a href="' . $entity['url'] . '" target="_blank" rel="noreferrer">' . $entity['text'] . '</a>';
                     $skipUntilCp = $entity['end'];
                 } else {
                     $appended = $c;
@@ -334,7 +345,7 @@ class usertimeline extends \spouts\spout {
      *
      * @param stdClass $groupedEntities entities returned by Twitter API
      *
-     * @return array flattened and ordered array of entities
+     * @return array{text: string, url: string, end: int}[] flattened and ordered array of entities
      */
     public static function formatEntities(stdClass $groupedEntities) {
         $result = [];

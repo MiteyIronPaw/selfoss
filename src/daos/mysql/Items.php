@@ -2,7 +2,11 @@
 
 namespace daos\mysql;
 
+use daos\DatabaseInterface;
+use daos\ItemOptions;
 use DateTime;
+use helpers\Configuration;
+use Monolog\Logger;
 
 /**
  * Class for accessing persistent saved items -- mysql
@@ -12,14 +16,32 @@ use DateTime;
  * @author     Tobias Zeising <tobias.zeising@aditu.de>
  * @author     Harald Lapp <harald.lapp@gmail.com>
  */
-class Items extends Database {
+class Items implements \daos\ItemsInterface {
     /** @var bool indicates whether last run has more results or not */
     protected $hasMore = false;
+
+    /** @var class-string SQL helper */
+    protected static $stmt = Statements::class;
+
+    /** @var Configuration configuration */
+    private $configuration;
+
+    /** @var DatabaseInterface database connection */
+    protected $database;
+
+    /** @var Logger */
+    private $logger;
+
+    public function __construct(Logger $logger, Configuration $configuration, DatabaseInterface $database) {
+        $this->configuration = $configuration;
+        $this->database = $database;
+        $this->logger = $logger;
+    }
 
     /**
      * mark item as read
      *
-     * @param int $id
+     * @param int|int[] $id
      *
      * @return void
      */
@@ -33,13 +55,13 @@ class Items extends Database {
         }
 
         // i used string concatenation after validating $id
-        \F3::get('db')->exec('UPDATE ' . \F3::get('db_prefix') . "items SET unread=? WHERE id IN ($id)", false);
+        $this->database->exec('UPDATE ' . $this->configuration->dbPrefix . "items SET unread=? WHERE id IN ($id)", false);
     }
 
     /**
      * mark item as unread
      *
-     * @param int $id
+     * @param int|int[] $id
      *
      * @return void
      */
@@ -49,7 +71,7 @@ class Items extends Database {
         } elseif (!is_numeric($id)) {
             return;
         }
-        \F3::get('db')->exec('UPDATE ' . \F3::get('db_prefix') . "items SET unread=? WHERE id IN ($id)", true);
+        $this->database->exec('UPDATE ' . $this->configuration->dbPrefix . "items SET unread=? WHERE id IN ($id)", true);
     }
 
     /**
@@ -60,9 +82,9 @@ class Items extends Database {
      * @return void
      */
     public function starr($id) {
-        \F3::get('db')->exec('UPDATE ' . \F3::get('db_prefix') . 'items SET starred=:bool WHERE id=:id', [
+        $this->database->exec('UPDATE ' . $this->configuration->dbPrefix . 'items SET starred=:bool WHERE id=:id', [
             ':bool' => true,
-            ':id' => $id
+            ':id' => $id,
         ]);
     }
 
@@ -74,9 +96,9 @@ class Items extends Database {
      * @return void
      */
     public function unstarr($id) {
-        \F3::get('db')->exec('UPDATE ' . \F3::get('db_prefix') . 'items SET starred=:bool WHERE id=:id', [
+        $this->database->exec('UPDATE ' . $this->configuration->dbPrefix . 'items SET starred=:bool WHERE id=:id', [
             ':bool' => false,
-            ':id' => $id
+            ':id' => $id,
         ]);
     }
 
@@ -88,7 +110,7 @@ class Items extends Database {
      * @return void
      */
     public function add($values) {
-        \F3::get('db')->exec('INSERT INTO ' . \F3::get('db_prefix') . 'items (
+        $this->database->exec('INSERT INTO ' . $this->configuration->dbPrefix . 'items (
                     datetime,
                     title,
                     content,
@@ -124,7 +146,7 @@ class Items extends Database {
                     ':source' => $values['source'],
                     ':uid' => $values['uid'],
                     ':link' => $values['link'],
-                    ':author' => $values['author']
+                    ':author' => $values['author'],
                  ]);
     }
 
@@ -137,7 +159,7 @@ class Items extends Database {
      * @return bool
      */
     public function exists($uid) {
-        $res = \F3::get('db')->exec('SELECT COUNT(*) AS amount FROM ' . \F3::get('db_prefix') . 'items WHERE uid=:uid',
+        $res = $this->database->exec('SELECT COUNT(*) AS amount FROM ' . $this->configuration->dbPrefix . 'items WHERE uid=:uid',
             [':uid' => [$uid, \PDO::PARAM_STR]]);
 
         return $res[0]['amount'] > 0;
@@ -158,16 +180,13 @@ class Items extends Database {
         }
 
         array_walk($itemsInFeed, function(&$value) {
-            $value = \F3::get('db')->quote($value);
+            $value = $this->database->quote($value);
         });
-        $query = 'SELECT id, uid AS uid FROM ' . \F3::get('db_prefix') . 'items WHERE source = ' . \F3::get('db')->quote($sourceId) . ' AND uid IN (' . implode(',', $itemsInFeed) . ')';
-        $res = \F3::get('db')->query($query);
-        if ($res) {
-            $all = $res->fetchAll();
-            foreach ($all as $row) {
-                $uid = $row['uid'];
-                $itemsFound[$uid] = $row['id'];
-            }
+        $query = 'SELECT id, uid AS uid FROM ' . $this->configuration->dbPrefix . 'items WHERE source = ' . $this->database->quote($sourceId) . ' AND uid IN (' . implode(',', $itemsInFeed) . ')';
+        $res = $this->database->exec($query);
+        foreach ($res as $row) {
+            $uid = $row['uid'];
+            $itemsFound[$uid] = $row['id'];
         }
 
         return $itemsFound;
@@ -181,8 +200,9 @@ class Items extends Database {
      * @return void
      */
     public function updateLastSeen(array $itemIds) {
-        \F3::get('db')->exec('UPDATE ' . \F3::get('db_prefix') . 'items SET lastseen = CURRENT_TIMESTAMP
-            WHERE ' . $this->stmt->intRowMatches('id', $itemIds));
+        $stmt = static::$stmt;
+        $this->database->exec('UPDATE ' . $this->configuration->dbPrefix . 'items SET lastseen = CURRENT_TIMESTAMP
+            WHERE ' . $stmt::intRowMatches('id', $itemIds));
     }
 
     /**
@@ -193,12 +213,13 @@ class Items extends Database {
      * @return void
      */
     public function cleanup(DateTime $date = null) {
-        \F3::get('db')->exec('DELETE FROM ' . \F3::get('db_prefix') . 'items
+        $stmt = static::$stmt;
+        $this->database->exec('DELETE FROM ' . $this->configuration->dbPrefix . 'items
             WHERE source NOT IN (
-                SELECT id FROM ' . \F3::get('db_prefix') . 'sources)');
+                SELECT id FROM ' . $this->configuration->dbPrefix . 'sources)');
         if ($date !== null) {
-            \F3::get('db')->exec('DELETE FROM ' . \F3::get('db_prefix') . 'items
-                WHERE ' . $this->stmt->isFalse('starred') . ' AND lastseen<:date',
+            $this->database->exec('DELETE FROM ' . $this->configuration->dbPrefix . 'items
+                WHERE ' . $stmt::isFalse('starred') . ' AND lastseen<:date',
                     [':date' => $date->format('Y-m-d') . ' 00:00:00']
             );
         }
@@ -207,78 +228,79 @@ class Items extends Database {
     /**
      * returns items
      *
-     * @param mixed $options search, offset and filter params
+     * @param ItemOptions $options search, offset and filter params
      *
      * @return mixed items as array
      */
-    public function get($options = []) {
+    public function get(ItemOptions $options) {
+        $stmt = static::$stmt;
         $params = [];
-        $where = [$this->stmt->bool(true)];
+        $where = [$stmt::bool(true)];
         $order = 'DESC';
+        $offset = $options->offset;
 
         // only starred
-        if (isset($options['type']) && $options['type'] === 'starred') {
-            $where[] = $this->stmt->isTrue('starred');
+        if ($options->filter === 'starred') {
+            $where[] = $stmt::isTrue('starred');
         }
 
         // only unread
-        elseif (isset($options['type']) && $options['type'] === 'unread') {
-            $where[] = $this->stmt->isTrue('unread');
-            if (\F3::get('unread_order') === 'asc') {
+        elseif ($options->filter === 'unread') {
+            $where[] = $stmt::isTrue('unread');
+            if ($this->configuration->unreadOrder === 'asc') {
                 $order = 'ASC';
             }
         }
 
         // search
-        if (isset($options['search']) && strlen($options['search']) > 0) {
-            $search = implode('%', \helpers\Search::splitTerms($options['search']));
-            $params[':search'] = $params[':search2'] = $params[':search3'] = ['%' . $search . '%', \PDO::PARAM_STR];
-            $where[] = '(items.title LIKE :search OR items.content LIKE :search2 OR sources.title LIKE :search3) ';
+        if ($options->search !== null) {
+            if (preg_match('#^/(?P<regex>.+)/$#', $options->search, $matches)) {
+                $params[':search'] = $params[':search2'] = $params[':search3'] = [$matches['regex'], \PDO::PARAM_STR];
+                $where[] = $stmt::exprOr($stmt::matchesRegex('items.title', ':search'), $stmt::matchesRegex('items.content', ':search2'), $stmt::matchesRegex('sources.title', ':search3'));
+            } else {
+                $search = implode('%', \helpers\Search::splitTerms($options->search));
+                $params[':search'] = $params[':search2'] = $params[':search3'] = ['%' . $search . '%', \PDO::PARAM_STR];
+                $where[] = '(items.title LIKE :search OR items.content LIKE :search2 OR sources.title LIKE :search3) ';
+            }
         }
 
         // tag filter
-        if (isset($options['tag']) && strlen($options['tag']) > 0) {
-            $params[':tag'] = $options['tag'];
+        if ($options->tag !== null) {
+            $params[':tag'] = $options->tag;
             $where[] = 'items.source=sources.id';
-            $where[] = $this->stmt->csvRowMatches('sources.tags', ':tag');
+            $where[] = $stmt::csvRowMatches('sources.tags', ':tag');
         }
         // source filter
-        elseif (isset($options['source']) && strlen($options['source']) > 0) {
-            $params[':source'] = [$options['source'], \PDO::PARAM_INT];
+        elseif ($options->source !== null) {
+            $params[':source'] = [$options->source, \PDO::PARAM_INT];
             $where[] = 'items.source=:source ';
         }
 
         // update time filter
-        if (isset($options['updatedsince']) && strlen($options['updatedsince']) > 0) {
-            $params[':updatedsince'] = [$options['updatedsince'], \PDO::PARAM_STR];
+        if ($options->updatedSince !== null) {
+            $params[':updatedsince'] = [
+                $stmt::datetime($options->updatedSince), \PDO::PARAM_STR,
+            ];
             $where[] = 'items.updatetime > :updatedsince ';
         }
 
         // seek pagination (alternative to offset)
-        if (isset($options['fromDatetime'])
-            && strlen($options['fromDatetime']) > 0
-            && isset($options['fromId'])
-            && is_numeric($options['fromId'])) {
+        if ($options->fromDatetime !== null && $options->fromId !== null) {
             // discard offset as it makes no sense to mix offset pagination
             // with seek pagination.
-            $options['offset'] = 0;
+            $offset = 0;
 
-            $offset_from_datetime_sql = $this->stmt->datetime($options['fromDatetime']);
+            $offset_from_datetime_sql = $stmt::datetime($options->fromDatetime);
             $params[':offset_from_datetime'] = [
-                $offset_from_datetime_sql, \PDO::PARAM_STR
+                $offset_from_datetime_sql, \PDO::PARAM_STR,
             ];
             $params[':offset_from_datetime2'] = [
-                $offset_from_datetime_sql, \PDO::PARAM_STR
+                $offset_from_datetime_sql, \PDO::PARAM_STR,
             ];
             $params[':offset_from_id'] = [
-                $options['fromId'], \PDO::PARAM_INT
+                $options->fromId, \PDO::PARAM_INT,
             ];
-            $ltgt = null;
-            if ($order === 'ASC') {
-                $ltgt = '>';
-            } else {
-                $ltgt = '<';
-            }
+            $ltgt = $order === 'ASC' ? '>' : '<';
 
             // Because of sqlite lack of tuple comparison support, we use a
             // more complicated condition.
@@ -288,46 +310,35 @@ class Items extends Database {
                         )";
         }
 
-        $where_ids = '';
+        $where_ids = null;
         // extra ids to include in stream
-        if (isset($options['extraIds'])
-            && count($options['extraIds']) > 0
+        if (count($options->extraIds) > 0
             // limit the query to a sensible max
-            && count($options['extraIds']) <= \F3::get('items_perpage')) {
-            $extra_ids_stmt = $this->stmt->intRowMatches('items.id', $options['extraIds']);
-            if ($extra_ids_stmt !== null) {
-                $where_ids = $extra_ids_stmt;
-            }
+            && count($options->extraIds) <= $this->configuration->itemsPerpage) {
+            $where_ids = $stmt::intRowMatches('items.id', $options->extraIds);
         }
 
         // finalize items filter
         $where_sql = implode(' AND ', $where);
 
         // set limit
-        if (!is_numeric($options['items']) || $options['items'] > 200) {
-            $options['items'] = \F3::get('items_perpage');
-        }
-
-        // set offset
-        if (is_numeric($options['offset']) === false) {
-            $options['offset'] = 0;
-        }
+        $pageSize = $options->pageSize === null ? $this->configuration->itemsPerpage : min($options->pageSize, max(200, $this->configuration->itemsPerpage));
 
         // first check whether more items are available
-        $result = \F3::get('db')->exec('SELECT items.id
-                   FROM ' . \F3::get('db_prefix') . 'items AS items, ' . \F3::get('db_prefix') . 'sources AS sources
+        $result = $this->database->exec('SELECT items.id
+                   FROM ' . $this->configuration->dbPrefix . 'items AS items, ' . $this->configuration->dbPrefix . 'sources AS sources
                    WHERE items.source=sources.id AND ' . $where_sql . '
-                   LIMIT 1 OFFSET ' . ($options['offset'] + $options['items']), $params);
-        $this->hasMore = count($result);
+                   LIMIT 1 OFFSET ' . ($offset + $pageSize), $params);
+        $this->hasMore = count($result) > 0;
 
         // get items from database
         $select = 'SELECT
             items.id, datetime, items.title AS title, content, unread, starred, source, thumbnail, icon, uid, link, updatetime, author, sources.title as sourcetitle, sources.tags as tags
-            FROM ' . \F3::get('db_prefix') . 'items AS items, ' . \F3::get('db_prefix') . 'sources AS sources
+            FROM ' . $this->configuration->dbPrefix . 'items AS items, ' . $this->configuration->dbPrefix . 'sources AS sources
             WHERE items.source=sources.id AND';
         $order_sql = 'ORDER BY items.datetime ' . $order . ', items.id ' . $order;
 
-        if ($where_ids !== '') {
+        if ($where_ids !== null) {
             // This UNION is required for the extra explicitely requested items
             // to be included whether or not they would have been excluded by
             // seek, filter, offset rules.
@@ -337,21 +348,23 @@ class Items extends Database {
             // complaining about 'order by clause should come after union not
             // before'.
             $query = "SELECT * FROM (
-                        SELECT * FROM ($select $where_sql $order_sql LIMIT " . $options['items'] . ' OFFSET ' . $options['offset'] . ") AS entries
+                        SELECT * FROM ($select $where_sql $order_sql LIMIT " . $pageSize . ' OFFSET ' . $offset . ") AS entries
                       UNION
                         $select $where_ids
                       ) AS items
                       $order_sql";
         } else {
-            $query = "$select $where_sql $order_sql LIMIT " . $options['items'] . ' OFFSET ' . $options['offset'];
+            $query = "$select $where_sql $order_sql LIMIT " . $pageSize . ' OFFSET ' . $offset;
         }
 
-        return $this->stmt->ensureRowTypes(\F3::get('db')->exec($query, $params), [
-            'id' => \daos\PARAM_INT,
-            'unread' => \daos\PARAM_BOOL,
-            'starred' => \daos\PARAM_BOOL,
-            'source' => \daos\PARAM_INT,
-            'tags' => \daos\PARAM_CSV
+        return $stmt::ensureRowTypes($this->database->exec($query, $params), [
+            'id' => DatabaseInterface::PARAM_INT,
+            'datetime' => DatabaseInterface::PARAM_DATETIME,
+            'unread' => DatabaseInterface::PARAM_BOOL,
+            'starred' => DatabaseInterface::PARAM_BOOL,
+            'source' => DatabaseInterface::PARAM_INT,
+            'tags' => DatabaseInterface::PARAM_CSV,
+            'updatetime' => DatabaseInterface::PARAM_DATETIME,
         ]);
     }
 
@@ -376,12 +389,13 @@ class Items extends Database {
      * @return array of items
      */
     public function sync($sinceId, DateTime $notBefore, DateTime $since, $howMany) {
+        $stmt = static::$stmt;
         $query = 'SELECT
         items.id, datetime, items.title AS title, content, unread, starred, source, thumbnail, icon, uid, link, updatetime, author, sources.title as sourcetitle, sources.tags as tags
-        FROM ' . \F3::get('db_prefix') . 'items AS items, ' . \F3::get('db_prefix') . 'sources AS sources
+        FROM ' . $this->configuration->dbPrefix . 'items AS items, ' . $this->configuration->dbPrefix . 'sources AS sources
         WHERE items.source=sources.id
-            AND (' . $this->stmt->isTrue('unread') .
-                 ' OR ' . $this->stmt->isTrue('starred') .
+            AND (' . $stmt::isTrue('unread') .
+                 ' OR ' . $stmt::isTrue('starred') .
                  ' OR datetime >= :notBefore
                 )
             AND (items.id > :sinceId OR
@@ -391,31 +405,35 @@ class Items extends Database {
         $params = [
             'sinceId' => [$sinceId, \PDO::PARAM_INT],
             'howMany' => [$howMany, \PDO::PARAM_INT],
-            'notBefore' => [$notBefore->format(\DateTime::ATOM), \PDO::PARAM_STR],
-            'since' => [$since->format(\DateTime::ATOM), \PDO::PARAM_STR]
+            'notBefore' => [$notBefore->format('Y-m-d H:i:s'), \PDO::PARAM_STR],
+            'since' => [$since->format('Y-m-d H:i:s'), \PDO::PARAM_STR],
         ];
 
-        return $this->stmt->ensureRowTypes(\F3::get('db')->exec($query, $params), [
-            'id' => \daos\PARAM_INT,
-            'unread' => \daos\PARAM_BOOL,
-            'starred' => \daos\PARAM_BOOL,
-            'source' => \daos\PARAM_INT
+        return $stmt::ensureRowTypes($this->database->exec($query, $params), [
+            'id' => DatabaseInterface::PARAM_INT,
+            'datetime' => DatabaseInterface::PARAM_DATETIME,
+            'unread' => DatabaseInterface::PARAM_BOOL,
+            'starred' => DatabaseInterface::PARAM_BOOL,
+            'source' => DatabaseInterface::PARAM_INT,
+            'tags' => DatabaseInterface::PARAM_CSV,
+            'updatetime' => DatabaseInterface::PARAM_DATETIME,
         ]);
     }
 
     /**
      * Lowest id of interest
      *
-     * @return lowest id of interest
+     * @return int lowest id of interest
      */
     public function lowestIdOfInterest() {
-        $lowest = $this->stmt->ensureRowTypes(
-            \F3::get('db')->exec(
-                'SELECT id FROM ' . \F3::get('db_prefix') . 'items AS items
-                 WHERE ' . $this->stmt->isTrue('unread') .
-                    ' OR ' . $this->stmt->isTrue('starred') .
+        $stmt = static::$stmt;
+        $lowest = $stmt::ensureRowTypes(
+            $this->database->exec(
+                'SELECT id FROM ' . $this->configuration->dbPrefix . 'items AS items
+                 WHERE ' . $stmt::isTrue('unread') .
+                    ' OR ' . $stmt::isTrue('starred') .
                 ' ORDER BY id LIMIT 1'),
-            ['id' => \daos\PARAM_INT]
+            ['id' => DatabaseInterface::PARAM_INT]
         );
         if ($lowest) {
             return $lowest[0]['id'];
@@ -430,11 +448,12 @@ class Items extends Database {
      * @return int last id in db
      */
     public function lastId() {
-        $lastId = $this->stmt->ensureRowTypes(
-            \F3::get('db')->exec(
-                'SELECT id FROM ' . \F3::get('db_prefix') . 'items AS items
+        $stmt = static::$stmt;
+        $lastId = $stmt::ensureRowTypes(
+            $this->database->exec(
+                'SELECT id FROM ' . $this->configuration->dbPrefix . 'items AS items
                  ORDER BY id DESC LIMIT 1'),
-            ['id' => \daos\PARAM_INT]
+            ['id' => DatabaseInterface::PARAM_INT]
         );
         if ($lastId) {
             return $lastId[0]['id'];
@@ -450,8 +469,8 @@ class Items extends Database {
      */
     public function getThumbnails() {
         $thumbnails = [];
-        $result = \F3::get('db')->exec('SELECT thumbnail
-                   FROM ' . \F3::get('db_prefix') . 'items
+        $result = $this->database->exec('SELECT thumbnail
+                   FROM ' . $this->configuration->dbPrefix . 'items
                    WHERE thumbnail!=""');
         foreach ($result as $thumb) {
             $thumbnails[] = $thumb['thumbnail'];
@@ -467,8 +486,8 @@ class Items extends Database {
      */
     public function getIcons() {
         $icons = [];
-        $result = \F3::get('db')->exec('SELECT icon
-                   FROM ' . \F3::get('db_prefix') . 'items
+        $result = $this->database->exec('SELECT icon
+                   FROM ' . $this->configuration->dbPrefix . 'items
                    WHERE icon!=""');
         foreach ($result as $icon) {
             $icons[] = $icon['icon'];
@@ -485,13 +504,13 @@ class Items extends Database {
      * @return bool true if thumbnail is still in use
      */
     public function hasThumbnail($thumbnail) {
-        $res = \F3::get('db')->exec('SELECT count(*) AS amount
-                   FROM ' . \F3::get('db_prefix') . 'items
+        $res = $this->database->exec('SELECT count(*) AS amount
+                   FROM ' . $this->configuration->dbPrefix . 'items
                    WHERE thumbnail=:thumbnail',
                   [':thumbnail' => $thumbnail]);
         $amount = $res[0]['amount'];
         if ($amount == 0) {
-            \F3::get('logger')->debug('thumbnail not found: ' . $thumbnail);
+            $this->logger->debug('thumbnail not found: ' . $thumbnail);
         }
 
         return $amount > 0;
@@ -505,8 +524,8 @@ class Items extends Database {
      * @return bool true if icon is still in use
      */
     public function hasIcon($icon) {
-        $res = \F3::get('db')->exec('SELECT count(*) AS amount
-                   FROM ' . \F3::get('db_prefix') . 'items
+        $res = $this->database->exec('SELECT count(*) AS amount
+                   FROM ' . $this->configuration->dbPrefix . 'items
                    WHERE icon=:icon',
                   [':icon' => $icon]);
 
@@ -544,35 +563,15 @@ class Items extends Database {
     }
 
     /**
-     * returns the icon of the last fetched item.
-     *
-     * @param int $sourceid id of the source
-     *
-     * @return ?string
-     */
-    public function getLastIcon($sourceid) {
-        if (is_numeric($sourceid) === false) {
-            return null;
-        }
-
-        $res = \F3::get('db')->exec('SELECT icon FROM ' . \F3::get('db_prefix') . 'items WHERE source=:sourceid AND icon!=\'\' AND icon IS NOT NULL ORDER BY ID DESC LIMIT 1',
-            [':sourceid' => $sourceid]);
-        if (count($res) === 1) {
-            return $res[0]['icon'];
-        }
-
-        return null;
-    }
-
-    /**
      * returns the amount of entries in database which are unread
      *
      * @return int amount of entries in database which are unread
      */
     public function numberOfUnread() {
-        $res = \F3::get('db')->exec('SELECT count(*) AS amount
-                   FROM ' . \F3::get('db_prefix') . 'items
-                   WHERE ' . $this->stmt->isTrue('unread'));
+        $stmt = static::$stmt;
+        $res = $this->database->exec('SELECT count(*) AS amount
+                   FROM ' . $this->configuration->dbPrefix . 'items
+                   WHERE ' . $stmt::isTrue('unread'));
 
         return $res[0]['amount'];
     }
@@ -583,15 +582,16 @@ class Items extends Database {
      * @return array mount of total, unread, starred entries in database
      */
     public function stats() {
-        $res = \F3::get('db')->exec('SELECT
+        $stmt = static::$stmt;
+        $res = $this->database->exec('SELECT
             COUNT(*) AS total,
-            ' . $this->stmt->sumBool('unread') . ' AS unread,
-            ' . $this->stmt->sumBool('starred') . ' AS starred
-            FROM ' . \F3::get('db_prefix') . 'items;');
-        $res = $this->stmt->ensureRowTypes($res, [
-            'total' => \daos\PARAM_INT,
-            'unread' => \daos\PARAM_INT,
-            'starred' => \daos\PARAM_INT
+            ' . $stmt::sumBool('unread') . ' AS unread,
+            ' . $stmt::sumBool('starred') . ' AS starred
+            FROM ' . $this->configuration->dbPrefix . 'items;');
+        $res = $stmt::ensureRowTypes($res, [
+            'total' => DatabaseInterface::PARAM_INT,
+            'unread' => DatabaseInterface::PARAM_INT,
+            'starred' => DatabaseInterface::PARAM_INT,
         ]);
 
         return $res[0];
@@ -603,9 +603,9 @@ class Items extends Database {
      * @return string timestamp
      */
     public function lastUpdate() {
-        $res = \F3::get('db')->exec('SELECT
+        $res = $this->database->exec('SELECT
             MAX(updatetime) AS last_update_time
-            FROM ' . \F3::get('db_prefix') . 'items;');
+            FROM ' . $this->configuration->dbPrefix . 'items;');
 
         return $res[0]['last_update_time'];
     }
@@ -618,14 +618,15 @@ class Items extends Database {
      * @return array of unread, starred, etc. status of specified items
      */
     public function statuses(DateTime $since) {
-        $res = \F3::get('db')->exec('SELECT id, unread, starred
-            FROM ' . \F3::get('db_prefix') . 'items
-            WHERE ' . \F3::get('db_prefix') . 'items.updatetime > :since;',
-                [':since' => [$since->format(DateTime::ATOM), \PDO::PARAM_STR]]);
-        $res = $this->stmt->ensureRowTypes($res, [
-            'id' => \daos\PARAM_INT,
-            'unread' => \daos\PARAM_BOOL,
-            'starred' => \daos\PARAM_BOOL
+        $stmt = static::$stmt;
+        $res = $this->database->exec('SELECT id, unread, starred
+            FROM ' . $this->configuration->dbPrefix . 'items
+            WHERE ' . $this->configuration->dbPrefix . 'items.updatetime > :since;',
+                [':since' => [$since->format('Y-m-d H:i:s'), \PDO::PARAM_STR]]);
+        $res = $stmt::ensureRowTypes($res, [
+            'id' => DatabaseInterface::PARAM_INT,
+            'unread' => DatabaseInterface::PARAM_BOOL,
+            'starred' => DatabaseInterface::PARAM_BOOL,
         ]);
 
         return $res;
@@ -639,6 +640,7 @@ class Items extends Database {
      * @return void
      */
     public function bulkStatusUpdate(array $statuses) {
+        $stmt = static::$stmt;
         $sql = [];
         foreach ($statuses as $status) {
             if (array_key_exists('id', $status)) {
@@ -652,12 +654,12 @@ class Items extends Database {
                             if ($status[$sk] == 'true') {
                                 $statusUpdate = [
                                     'sk' => $sk,
-                                    'sql' => $this->stmt->isTrue($sk)
+                                    'sql' => $stmt::isTrue($sk),
                                 ];
                             } elseif ($status[$sk] == 'false') {
                                 $statusUpdate = [
                                     'sk' => $sk,
-                                    'sql' => $this->stmt->isFalse($sk)
+                                    'sql' => $stmt::isFalse($sk),
                                 ];
                             }
                         }
@@ -677,7 +679,7 @@ class Items extends Database {
                             // ensure all saved status updates have been made
                             // after the last server update for this entry.
                             if (!array_key_exists($sk, $sql[$id]['updates'])
-                                || $updateDate > $sql['id']['datetime']) {
+                                || $updateDate > $sql[$id]['datetime']) {
                                 $sql[$id]['updates'][$sk] = $statusUpdate['sql'];
                             }
                             if ($updateDate < $sql[$id]['datetime']) {
@@ -687,7 +689,7 @@ class Items extends Database {
                             // create new status update
                             $sql[$id] = [
                                 'updates' => [$sk => $statusUpdate['sql']],
-                                'datetime' => $updateDate->format(\DateTime::ATOM)
+                                'datetime' => $updateDate->format('Y-m-d H:i:s'),
                             ];
                         }
                     }
@@ -696,27 +698,27 @@ class Items extends Database {
         }
 
         if ($sql) {
-            \F3::get('db')->begin();
+            $this->database->beginTransaction();
             foreach ($sql as $id => $q) {
                 $params = [
                     ':id' => [$id, \PDO::PARAM_INT],
-                    ':statusUpdate' => [$q['datetime'], \PDO::PARAM_STR]
+                    ':statusUpdate' => [$q['datetime'], \PDO::PARAM_STR],
                 ];
-                $updated = \F3::get('db')->exec(
-                    'UPDATE ' . \F3::get('db_prefix') . 'items
+                $updated = $this->database->execute(
+                    'UPDATE ' . $this->configuration->dbPrefix . 'items
                     SET ' . implode(', ', array_values($q['updates'])) . '
                     WHERE id = :id AND updatetime < :statusUpdate', $params);
-                if ($updated == 0) {
+                if ($updated->rowCount() === 0) {
                     // entry status was updated in between so updatetime must
                     // be updated to ensure client side consistency of
                     // statuses.
-                    \F3::get('db')->exec(
-                        'UPDATE ' . \F3::get('db_prefix') . 'items
-                         SET ' . $this->stmt->rowTouch('updatetime') . '
+                    $this->database->exec(
+                        'UPDATE ' . $this->configuration->dbPrefix . 'items
+                         SET ' . $stmt::rowTouch('updatetime') . '
                          WHERE id = :id', [':id' => [$id, \PDO::PARAM_INT]]);
                 }
             }
-            \F3::get('db')->commit();
+            $this->database->commit();
         }
     }
 }

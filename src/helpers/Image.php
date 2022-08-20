@@ -5,6 +5,7 @@ namespace helpers;
 use Elphin\IcoFileLoader\IcoFileService;
 use GuzzleHttp\Psr7\Uri;
 use GuzzleHttp\Psr7\UriResolver;
+use Monolog\Logger;
 use WideImage\WideImage;
 
 /**
@@ -15,20 +16,54 @@ use WideImage\WideImage;
  * @author     Tobias Zeising <tobias.zeising@aditu.de>
  */
 class Image {
-    /** @var ?string url of last fetched favicon */
-    private $faviconUrl = null;
+    const FORMAT_JPEG = 'jpeg';
+    const FORMAT_PNG = 'png';
 
-    private static $faviconMimeTypes = [
-        // IANA assigned type
-        'image/vnd.microsoft.icon',
-        // Used by Microsoft applications
-        'image/x-icon',
-        // Incorrect but sometimes appearing
-        'image/ico',
-        'image/icon',
-        'text/ico',
-        'application/ico'
+    private static $extensions = [
+        self::FORMAT_JPEG => 'jpg',
+        self::FORMAT_PNG => 'png',
     ];
+
+    const IMAGE_TYPES = [
+        // IANA assigned type
+        'image/bmp' => 'bmp',
+        'image/gif' => 'gif',
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/svg+xml' => 'svg',
+        'image/tiff' => 'tif',
+        'image/vnd.microsoft.icon' => 'ico',
+        // Used by Microsoft applications
+        'image/x-icon' => 'ico',
+        'image/x-ms-bmp' => 'bmp',
+        // Incorrect but sometimes appearing
+        'image/ico' => 'ico',
+        'image/icon' => 'ico',
+        'text/ico' => 'ico',
+        'application/ico' => 'ico',
+    ];
+
+    /** @var Logger */
+    private $logger;
+
+    /** @var WebClient */
+    private $webClient;
+
+    public function __construct(Logger $logger, WebClient $webClient) {
+        $this->logger = $logger;
+        $this->webClient = $webClient;
+    }
+
+    /**
+     * Get preferred extension for the format.
+     *
+     * @param self::FORMAT_* $format
+     *
+     * @return string
+     */
+    public static function getExtension($format) {
+        return self::$extensions[$format];
+    }
 
     /**
      * fetch favicon
@@ -38,49 +73,76 @@ class Image {
      * @param ?int $width
      * @param ?int $height
      *
-     * @return ?string
+     * @return ?array{string, ImageHolder} pair of URL and blob containing the image data
      */
     public function fetchFavicon($url, $isHtmlUrl = false, $width = null, $height = null) {
         // try given url
-        if ($isHtmlUrl === false) {
-            $faviconAsPng = $this->loadImage($url, $width, $height);
-            if ($faviconAsPng !== null) {
-                $this->faviconUrl = $url;
+        try {
+            $http = $this->webClient->getHttpClient();
+            $response = $http->get($url);
+            $blob = (string) $response->getBody();
+            $effectiveUrl = new Uri(WebClient::getEffectiveUrl($url, $response));
 
-                return $faviconAsPng;
+            if ($response->getStatusCode() !== 200) {
+                throw new \Exception(substr($blob, 0, 512));
+            }
+        } catch (\Throwable $e) {
+            $this->logger->error("icon: failed to retrieve URL $url", ['exception' => $e]);
+
+            return null;
+        } catch (\Exception $e) {
+            // For PHP 5
+            $this->logger->error("icon: failed to retrieve URL $url", ['exception' => $e]);
+
+            return null;
+        }
+
+        if ($isHtmlUrl === false) {
+            $image = $this->loadImage($blob, self::FORMAT_PNG, $width, $height);
+            if ($image !== null) {
+                return [$url, $image];
+            }
+        }
+
+        // When HTML page, search for icon links
+        if (preg_match('#^text/html\b#i', $response->getHeaderLine('content-type')) || preg_match('#<html[\s>]#si', $blob)) {
+            $shortcutIcons = ImageUtils::parseShortcutIcons($blob);
+            foreach ($shortcutIcons as $shortcutIcon) {
+                $shortcutIconUrl = (string) UriResolver::resolve($effectiveUrl, new Uri($shortcutIcon));
+
+                try {
+                    $data = $this->webClient->request($shortcutIconUrl);
+                    $image = $this->loadImage($data, self::FORMAT_PNG, $width, $height);
+
+                    if ($image !== null) {
+                        return [$shortcutIconUrl, $image];
+                    }
+                } catch (\Throwable $e) {
+                    $this->logger->error("failed to retrieve image $url,", ['exception' => $e]);
+                } catch (\Exception $e) {
+                    // For PHP 5
+                    $this->logger->error("failed to retrieve image $url,", ['exception' => $e]);
+                }
             }
         }
 
         $urlElements = parse_url($url);
 
-        // search on base page for <link rel="shortcut icon" url...
-        $html = null;
-        try {
-            $html = \helpers\WebClient::request($url);
-        } catch (\Exception $e) {
-            \F3::get('logger')->debug('icon: failed to get html page: ', ['exception' => $e]);
-        }
-
-        $shortcutIcon = $this->parseShortcutIcon($html);
-        if ($shortcutIcon !== null) {
-            $shortcutIcon = (string) UriResolver::resolve(new Uri($url), new Uri($shortcutIcon));
-
-            $faviconAsPng = $this->loadImage($shortcutIcon, $width, $height);
-            if ($faviconAsPng !== null) {
-                $this->faviconUrl = $shortcutIcon;
-
-                return $faviconAsPng;
-            }
-        }
-
         // search domain/favicon.ico
         if (isset($urlElements['scheme']) && isset($urlElements['host'])) {
             $url = $urlElements['scheme'] . '://' . $urlElements['host'] . '/favicon.ico';
-            $faviconAsPng = $this->loadImage($url, $width, $height);
-            if ($faviconAsPng !== null) {
-                $this->faviconUrl = $url;
+            try {
+                $data = $this->webClient->request($url);
+                $image = $this->loadImage($data, self::FORMAT_PNG, $width, $height);
 
-                return $faviconAsPng;
+                if ($image !== null) {
+                    return [$url, $image];
+                }
+            } catch (\Throwable $e) {
+                $this->logger->error("failed to retrieve image $url,", ['exception' => $e]);
+            } catch (\Exception $e) {
+                // For PHP 5
+                $this->logger->error("failed to retrieve image $url,", ['exception' => $e]);
             }
         }
 
@@ -88,39 +150,66 @@ class Image {
     }
 
     /**
-     * load image
+     * Load image from URL, optionally resize it and convert it to desired format.
      *
-     * @param string $url source url
-     * @param string $extension file extension of output file
-     * @param ?int $width
-     * @param ?int $height
+     * @param string $data
+     * @param self::FORMAT_JPEG|self::FORMAT_PNG $format file format of output file
+     * @param ?int $width target width
+     * @param ?int $height target height
      *
-     * @return ?string
+     * @return ?ImageHolder blob containing the processed image
      */
-    public function loadImage($url, $extension = 'png', $width = null, $height = null) {
-        // load image
-        try {
-            $data = \helpers\WebClient::request($url);
-        } catch (\Exception $e) {
-            \F3::get('logger')->error("failed to retrieve image $url,", ['exception' => $e]);
+    public function loadImage($data, $format = self::FORMAT_PNG, $width = null, $height = null) {
+        $imgInfo = null;
 
+        // get image type
+        if (extension_loaded('imagick')) {
+            // check for svgz or svg
+            if (substr($data, 0, 2) === "\x1f\x8b" && ($d = gzdecode($data) !== false)) {
+                $data = $d;
+            }
+
+            if (ImageUtils::detectSvg($data)) {
+                $imgInfo = ['mime' => 'image/svg+xml'];
+            }
+        }
+
+        if ($imgInfo === null) {
+            $imgInfo = getimagesizefromstring($data);
+            if ($imgInfo === false || $imgInfo[0] === 0 || $imgInfo[1] === 0) {
+                // unable to determine dimensions
+                return null;
+            }
+        }
+
+        $mimeType = isset($imgInfo['mime']) ? strtolower($imgInfo['mime']) : null;
+        // Workaround for PHP 5.6, which does not allow isset on array access to array constants.
+        $types = self::IMAGE_TYPES;
+        if ($mimeType !== null && isset($types[$mimeType])) {
+            $type = self::IMAGE_TYPES[$mimeType];
+        } else {
             return null;
         }
 
-        // get image type
-        $imgInfo = @getimagesizefromstring($data);
-        if (in_array(strtolower($imgInfo['mime']), self::$faviconMimeTypes, true)) {
-            $type = 'ico';
-        } elseif (strtolower($imgInfo['mime']) === 'image/png') {
-            $type = 'png';
-        } elseif (strtolower($imgInfo['mime']) === 'image/jpeg') {
-            $type = 'jpg';
-        } elseif (strtolower($imgInfo['mime']) === 'image/gif') {
-            $type = 'gif';
-        } elseif (strtolower($imgInfo['mime']) === 'image/x-ms-bmp') {
-            $type = 'bmp';
-        } else {
-            return null;
+        // convert svg to png/jpeg
+        if ($type === 'svg') {
+            $image = new \Imagick();
+            $image->readImageBlob($data);
+            if ($width !== null && $height !== null) {
+                $image->resizeImage($width, $height, \Imagick::FILTER_LANCZOS, 1, true);
+            }
+
+            if ($format === self::FORMAT_JPEG) {
+                $image->setImageFormat('jpeg');
+                $image->setImageCompression(\Imagick::COMPRESSION_JPEG);
+                $image->setImageCompressionQuality(75);
+            } else {
+                $image->setImageFormat('png24');
+                $image->setImageCompression(\Imagick::COMPRESSION_UNDEFINED);
+                $image->setOption('png:compression-level', '9');
+            }
+
+            return new ImageHolder((string) $image, $format, $image->getImageWidth(), $image->getImageHeight());
         }
 
         // convert ico to png
@@ -129,7 +218,7 @@ class Image {
             try {
                 $icon = $loader->fromString($data);
             } catch (\InvalidArgumentException $e) {
-                \F3::get('logger')->error("Icon “{$url}” is not valid", ['exception' => $e]);
+                $this->logger->error('Icon is not valid', ['exception' => $e]);
 
                 return null;
             }
@@ -158,7 +247,10 @@ class Image {
         // parse image for saving it later
         try {
             $wideImage = WideImage::load($data);
+        } catch (\Throwable $e) {
+            return null;
         } catch (\Exception $e) {
+            // For PHP 5
             return null;
         }
 
@@ -171,79 +263,12 @@ class Image {
         }
 
         // return image as jpg or png
-        if ($extension === 'jpg') {
+        if ($format === self::FORMAT_JPEG) {
             $data = $wideImage->asString('jpg', 75);
         } else {
             $data = $wideImage->asString('png', 4, PNG_NO_FILTER);
         }
 
-        return $data;
-    }
-
-    /**
-     * get favicon url
-     *
-     * @return ?string
-     */
-    public function getFaviconUrl() {
-        return $this->faviconUrl;
-    }
-
-    /**
-     * parse shortcut icon from given html
-     *
-     * @param string $html
-     *
-     * @return ?string favicon url
-     */
-    private function parseShortcutIcon($html) {
-        $dom = new \DomDocument();
-        if (@$dom->loadHTML($html) !== true) {
-            return null;
-        }
-
-        $xpath = new \DOMXPath($dom);
-        $elems = $xpath->query("//link[@rel='apple-touch-icon']");
-        if ($elems->length === 0) {
-            $elems = $xpath->query("//link[@rel='shortcut icon']");
-        }
-        if ($elems->length === 0) {
-            $elems = $xpath->query("//link[@rel='icon']");
-        }
-
-        if ($elems->length > 0) {
-            $icon = $elems->item(0);
-            if ($icon->hasAttribute('href')) {
-                return $icon->getAttribute('href');
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * taken from: http://zytzagoo.net/blog/2008/01/23/extracting-images-from-html-using-regular-expressions/
-     * Searches for the first occurence of an html <img> element in a string
-     * and extracts the src if it finds it. Returns null in case an <img>
-     * element is not found.
-     *
-     * @param string $html An HTML string
-     *
-     * @return ?string content of the src attribute of the first image
-     */
-    public static function findFirstImageSource($html) {
-        if (stripos($html, '<img') !== false) {
-            $imgsrc_regex = '#<\s*img [^\>]*src\s*=\s*(["\'])(.*?)\1#im';
-            preg_match($imgsrc_regex, $html, $matches);
-            unset($imgsrc_regex);
-            unset($html);
-            if (is_array($matches) && !empty($matches)) {
-                return $matches[2];
-            } else {
-                return null;
-            }
-        } else {
-            return null;
-        }
+        return new ImageHolder($data, $format, $wideImage->getWidth(), $wideImage->getHeight());
     }
 }

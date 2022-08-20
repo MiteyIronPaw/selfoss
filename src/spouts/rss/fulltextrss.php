@@ -3,8 +3,14 @@
 namespace spouts\rss;
 
 use Graby\Graby;
+use helpers\Configuration;
+use helpers\FeedReader;
+use helpers\Image;
 use helpers\WebClient;
 use Http\Adapter\Guzzle6\Client as GuzzleAdapter;
+use Monolog\Logger;
+use SimplePie_Item;
+use spouts\Item;
 
 /**
  * Plugin for fetching the news with fivefilters Full-Text RSS
@@ -27,50 +33,76 @@ class fulltextrss extends feed {
             'type' => 'url',
             'default' => '',
             'required' => true,
-            'validation' => ['notempty']
+            'validation' => ['notempty'],
         ],
     ];
 
     /** @var string tag for logger */
     private static $loggerTag = 'selfoss.graby';
 
-    /** @var Graby */
-    private $graby;
+    /** @var Configuration configuration */
+    private $configuration;
 
-    public function getContent() {
-        $url = $this->getLink();
+    /** @var ?Graby */
+    private $graby = null;
 
-        if (!isset($this->graby)) {
+    /** @var Logger */
+    private $logger;
+
+    /** @var WebClient */
+    private $webClient;
+
+    public function __construct(Configuration $configuration, FeedReader $feed, Image $imageHelper, Logger $logger, WebClient $webClient) {
+        parent::__construct($feed, $imageHelper, $logger);
+
+        $this->configuration = $configuration;
+        $this->logger = $logger;
+        $this->webClient = $webClient;
+    }
+
+    /**
+     * @return \Generator<Item<SimplePie_Item>> list of items
+     */
+    public function getItems() {
+        foreach (parent::getItems() as $item) {
+            $url = self::removeTrackersFromUrl($item->getLink());
+            $newContent = $this->getFullContent($url, $item);
+            yield $item->withLink($url)->withContent($newContent);
+        }
+    }
+
+    /**
+     * @param string $url
+     * @param Item<SimplePie_Item> $item
+     *
+     * @return string
+     */
+    public function getFullContent($url, Item $item) {
+        if ($this->graby === null) {
             $this->graby = new Graby([
                 'extractor' => [
                     'config_builder' => [
-                        'site_config' => [\F3::get('ftrss_custom_data_dir')],
+                        'site_config' => [$this->configuration->ftrssCustomDataDir],
                     ],
                 ],
-            ], new GuzzleAdapter(WebClient::getHttpClient()));
-            $logger = \F3::get('logger')->withName(self::$loggerTag);
+            ], new GuzzleAdapter($this->webClient->getHttpClient()));
+            $logger = $this->logger->withName(self::$loggerTag);
             $this->graby->setLogger($logger);
         }
 
-        \F3::get('logger')->info('Extracting content for page: ' . $url);
+        $this->logger->info('Extracting content for page: ' . $url);
 
         $response = $this->graby->fetchContent($url);
 
         if ($response['status'] !== 200) {
-            \F3::get('logger')->error('Failed loading page');
+            $this->logger->error('Failed loading page');
 
-            return '<p><strong>Failed to get web page</strong></p>' . parent::getContent();
+            return '<p><strong>Failed to get web page</strong></p>' . $item->getContent();
         }
 
         $content = $response['html'];
 
         return $content;
-    }
-
-    public function getLink() {
-        $url = parent::getLink();
-
-        return self::removeTrackersFromUrl($url);
     }
 
     /**
@@ -87,8 +119,8 @@ class fulltextrss extends feed {
 
         // Next, rebuild URL
         $real_url = $url['scheme'] . '://';
-        if (isset($url['user']) && isset($url['password'])) {
-            $real_url .= $url['user'] . ':' . $url['password'] . '@';
+        if (isset($url['user']) && isset($url['pass'])) {
+            $real_url .= $url['user'] . ':' . $url['pass'] . '@';
         }
         $real_url .= $url['host'] . $url['path'];
 

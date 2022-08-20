@@ -2,6 +2,9 @@
 
 namespace spouts\rss;
 
+use SimplePie_Item;
+use spouts\Item;
+
 /**
  * Spout for fetching images from given rss feed
  *
@@ -16,31 +19,42 @@ class images extends feed {
     /** @var string description of this source type */
     public $description = 'Fetch images from given rss feed.';
 
-    public function getThumbnail() {
-        if ($this->items === null || $this->valid() === false) {
-            return '';
+    /**
+     * @return \Generator<Item<SimplePie_Item>> list of items
+     */
+    public function getItems() {
+        foreach (parent::getItems() as $item) {
+            $thumbnail = $this->findThumbnail($item->getExtraData());
+            if ($thumbnail !== null) {
+                yield $item->withThumbnail($thumbnail);
+            } else {
+                yield $item;
+            }
         }
+    }
 
-        $item = current($this->items);
-
+    /**
+     * @return ?string
+     */
+    private function findThumbnail(SimplePie_Item $item) {
         // search enclosures (media tags)
-        if (count(@$item->get_enclosures()) > 0) {
+        if (($firstEnclosure = $item->get_enclosure(0)) !== null) {
             // thumbnail given?
-            if (@$item->get_enclosure(0)->get_thumbnail()) {
-                return @$item->get_enclosure(0)->get_thumbnail();
+            if ($firstEnclosure->get_thumbnail()) {
+                return $firstEnclosure->get_thumbnail();
             }
 
             // link given?
-            elseif (@$item->get_enclosure(0)->get_link()) {
-                return @$item->get_enclosure(0)->get_link();
+            elseif ($firstEnclosure->get_link()) {
+                return $firstEnclosure->get_link();
             }
         } else { // no enclosures: search image link in content
-            $image = \helpers\Image::findFirstImageSource(@$item->get_content());
+            $image = \helpers\ImageUtils::findFirstImageSource((string) $item->get_content());
             if ($image !== null) {
                 return $image;
             }
         }
 
-        return '';
+        return null;
     }
 }

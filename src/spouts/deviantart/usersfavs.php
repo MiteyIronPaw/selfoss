@@ -23,14 +23,17 @@ class usersfavs extends \spouts\rss\images {
             'type' => 'text',
             'default' => '',
             'required' => true,
-            'validation' => ['notempty']
-        ]
+            'validation' => ['notempty'],
+        ],
     ];
 
     public function load(array $params) {
         parent::load(['url' => $this->getXmlUrl($params)]);
     }
 
+    /**
+     * @return string
+     */
     public function getXmlUrl(array $params) {
         return 'https://backend.deviantart.com/rss.xml?q=%20sort%3Atime%20favby%3A' . urlencode($params['username']) . '&type=deviation';
     }

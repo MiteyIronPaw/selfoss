@@ -2,6 +2,8 @@
 
 namespace daos\pgsql;
 
+use daos\DatabaseInterface;
+
 /**
  * PostgreSQL specific statements
  *
@@ -11,33 +13,15 @@ namespace daos\pgsql;
  */
 class Statements extends \daos\mysql\Statements {
     /**
-     * wrap insert statement to return id
-     *
-     * @param string $query sql statement
-     * @param array $params sql params
-     *
-     * @return int id after insert
-     */
-    public static function insert($query, array $params) {
-        $res = \F3::get('db')->exec("$query RETURNING id", $params);
-
-        return $res[0]['id'];
-    }
-
-    /**
      * null first for order by clause
      *
      * @param string $column column to concat
-     * @param string $order
+     * @param 'DESC'|'ASC' $order
      *
      * @return string full statement
      */
     public static function nullFirst($column, $order) {
-        if ($order === 'DESC') {
-            $nulls = 'LAST';
-        } elseif ($order === 'ASC') {
-            $nulls = 'FIRST';
-        }
+        $nulls = $order === 'DESC' ? 'LAST' : 'FIRST';
 
         return "$column $order NULLS $nulls";
     }
@@ -97,17 +81,24 @@ class Statements extends \daos\mysql\Statements {
      * @return array of associative array representing row results having
      *         expected types
      */
-    public function ensureRowTypes(array $rows, array $expectedRowTypes) {
+    public static function ensureRowTypes(array $rows, array $expectedRowTypes) {
         foreach ($rows as $rowIndex => $row) {
             foreach ($expectedRowTypes as $columnIndex => $type) {
                 if (array_key_exists($columnIndex, $row)) {
                     switch ($type) {
                         // pgsql returns correct PHP types for INT and BOOL
-                        case \daos\PARAM_CSV:
+                        case DatabaseInterface::PARAM_CSV:
                             if ($row[$columnIndex] === '') {
                                 $value = [];
                             } else {
                                 $value = explode(',', $row[$columnIndex]);
+                            }
+                            break;
+                        case DatabaseInterface::PARAM_DATETIME:
+                            if (empty($row[$columnIndex])) {
+                                $value = null;
+                            } else {
+                                $value = new \DateTime($row[$columnIndex]);
                             }
                             break;
                         default:
@@ -121,5 +112,18 @@ class Statements extends \daos\mysql\Statements {
         }
 
         return $rows;
+    }
+
+    /**
+     * Match a value to a regular expression.
+     *
+     * @param string $value value to match
+     * @param string $regex regular expression
+     *
+     * @return string expression for matching
+     */
+    public static function matchesRegex($value, $regex) {
+        // https://www.postgresql.org/docs/12/functions-matching.html#FUNCTIONS-POSIX-REGEXP
+        return $value . ' ~ ' . $regex;
     }
 }

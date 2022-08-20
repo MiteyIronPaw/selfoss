@@ -1,11 +1,12 @@
 {
     "extends": [
-        "stylelint-config-standard",
+        "stylelint-config-standard-scss",
         "stylelint-prettier/recommended"
     ],
     "rules": {
         "color-hex-length": "long",
         "no-descending-specificity": null,
+        "no-invalid-position-at-import-rule": null,
         "property-no-vendor-prefix": true
     }
 }

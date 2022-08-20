@@ -2,6 +2,9 @@
 
 namespace daos\mysql;
 
+use daos\DatabaseInterface;
+use helpers\Configuration;
+
 /**
  * Class for accessing persistent saved sources -- mysql
  *
@@ -9,7 +12,21 @@ namespace daos\mysql;
  * @license    GPLv3 (https://www.gnu.org/licenses/gpl-3.0.html)
  * @author     Tobias Zeising <tobias.zeising@aditu.de>
  */
-class Tags extends Database {
+class Tags implements \daos\TagsInterface {
+    /** @var class-string SQL helper */
+    protected static $stmt = Statements::class;
+
+    /** @var Configuration configuration */
+    private $configuration;
+
+    /** @var DatabaseInterface database connection */
+    protected $database;
+
+    public function __construct(Configuration $configuration, DatabaseInterface $database) {
+        $this->configuration = $configuration;
+        $this->database = $database;
+    }
+
     /**
      * save given tag color
      *
@@ -20,12 +37,12 @@ class Tags extends Database {
      */
     public function saveTagColor($tag, $color) {
         if ($this->hasTag($tag) === true) {
-            \F3::get('db')->exec('UPDATE ' . \F3::get('db_prefix') . 'tags SET color=:color WHERE tag=:tag', [
+            $this->database->exec('UPDATE ' . $this->configuration->dbPrefix . 'tags SET color=:color WHERE tag=:tag', [
                 ':tag' => $tag,
-                ':color' => $color
+                ':color' => $color,
             ]);
         } else {
-            \F3::get('db')->exec('INSERT INTO ' . \F3::get('db_prefix') . 'tags (tag, color) VALUES (:tag, :color)', [
+            $this->database->exec('INSERT INTO ' . $this->configuration->dbPrefix . 'tags (tag, color) VALUES (:tag, :color)', [
                 ':tag' => $tag,
                 ':color' => $color,
             ]);
@@ -63,31 +80,32 @@ class Tags extends Database {
     /**
      * returns all tags with color
      *
-     * @return array of all tags
+     * @return array{tag: string, color: string}[]
      */
     public function get() {
-        return \F3::get('db')->exec('SELECT
+        return $this->database->exec('SELECT
                     tag, color
-                   FROM ' . \F3::get('db_prefix') . 'tags
+                   FROM ' . $this->configuration->dbPrefix . 'tags
                    ORDER BY LOWER(tag);');
     }
 
     /**
      * returns all tags with color and unread count
      *
-     * @return array of all tags
+     * @return array{tag: string, color: string, unread: int}[]
      */
     public function getWithUnread() {
+        $stmt = static::$stmt;
         $select = 'SELECT tag, color, COUNT(items.id) AS unread
-                   FROM ' . \F3::get('db_prefix') . 'tags AS tags,
-                        ' . \F3::get('db_prefix') . 'sources AS sources
-                   LEFT OUTER JOIN ' . \F3::get('db_prefix') . 'items AS items
-                       ON (items.source=sources.id AND ' . $this->stmt->isTrue('items.unread') . ')
-                   WHERE ' . $this->stmt->csvRowMatches('sources.tags', 'tags.tag') . '
+                   FROM ' . $this->configuration->dbPrefix . 'tags AS tags,
+                        ' . $this->configuration->dbPrefix . 'sources AS sources
+                   LEFT OUTER JOIN ' . $this->configuration->dbPrefix . 'items AS items
+                       ON (items.source=sources.id AND ' . $stmt::isTrue('items.unread') . ')
+                   WHERE ' . $stmt::csvRowMatches('sources.tags', 'tags.tag') . '
                    GROUP BY tags.tag, tags.color
                    ORDER BY LOWER(tags.tag);';
 
-        return $this->stmt->ensureRowTypes(\F3::get('db')->exec($select), ['unread' => \daos\PARAM_INT]);
+        return $stmt::ensureRowTypes($this->database->exec($select), ['unread' => DatabaseInterface::PARAM_INT]);
     }
 
     /**
@@ -114,7 +132,7 @@ class Tags extends Database {
      * @return bool true if color is used by an tag
      */
     private function isColorUsed($color) {
-        $res = \F3::get('db')->exec('SELECT COUNT(*) AS amount FROM ' . \F3::get('db_prefix') . 'tags WHERE color=:color', [':color' => $color]);
+        $res = $this->database->exec('SELECT COUNT(*) AS amount FROM ' . $this->configuration->dbPrefix . 'tags WHERE color=:color', [':color' => $color]);
 
         return $res[0]['amount'] > 0;
     }
@@ -127,12 +145,12 @@ class Tags extends Database {
      * @return bool true if color is used by an tag
      */
     public function hasTag($tag) {
-        if (\F3::get('db_type') === 'mysql') {
+        if ($this->configuration->dbType === 'mysql') {
             $where = 'WHERE tag = _utf8mb4 :tag COLLATE utf8mb4_general_ci';
         } else {
             $where = 'WHERE tag=:tag';
         }
-        $res = \F3::get('db')->exec('SELECT COUNT(*) AS amount FROM ' . \F3::get('db_prefix') . 'tags ' . $where, [':tag' => $tag]);
+        $res = $this->database->exec('SELECT COUNT(*) AS amount FROM ' . $this->configuration->dbPrefix . 'tags ' . $where, [':tag' => $tag]);
 
         return $res[0]['amount'] > 0;
     }
@@ -145,6 +163,6 @@ class Tags extends Database {
      * @return void
      */
     public function delete($tag) {
-        \F3::get('db')->exec('DELETE FROM ' . \F3::get('db_prefix') . 'tags WHERE tag=:tag', [':tag' => $tag]);
+        $this->database->exec('DELETE FROM ' . $this->configuration->dbPrefix . 'tags WHERE tag=:tag', [':tag' => $tag]);
     }
 }

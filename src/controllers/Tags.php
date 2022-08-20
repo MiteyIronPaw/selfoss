@@ -2,6 +2,9 @@
 
 namespace controllers;
 
+use helpers\Authentication;
+use helpers\View;
+
 /**
  * Controller for tag access
  *
@@ -9,67 +12,37 @@ namespace controllers;
  * @license    GPLv3 (https://www.gnu.org/licenses/gpl-3.0.html)
  * @author     Tobias Zeising <tobias.zeising@aditu.de>
  */
-class Tags extends BaseController {
-    /**
-     * returns all tags
-     * html
-     *
-     * @return void
-     */
-    public function tagslist() {
-        $this->needsLoggedInOrPublicMode();
+class Tags {
+    /** @var Authentication authentication helper */
+    private $authentication;
 
-        echo $this->tagsListAsString();
+    /** @var \daos\Tags tags */
+    private $tagsDao;
+
+    /** @var View view helper */
+    private $view;
+
+    public function __construct(Authentication $authentication, \daos\Tags $tagsDao, View $view) {
+        $this->authentication = $authentication;
+        $this->tagsDao = $tagsDao;
+        $this->view = $view;
     }
 
-    /**
-     * returns all tags
-     * html
-     *
-     * @return string
-     */
-    public function tagsListAsString() {
-        $tagsDao = new \daos\Tags();
-
-        return $this->renderTags($tagsDao->getWithUnread());
-    }
-
-    /**
-     * returns all tags
-     * html
-     *
-     * @param array $tags list of all tags to render
-     *
-     * @return string
-     */
-    public function renderTags(array $tags) {
-        $html = '';
-        foreach ($tags as $tag) {
-            $this->view->tag = $tag['tag'];
-            $this->view->color = $tag['color'];
-            $this->view->unread = $tag['unread'];
-            $html .= $this->view->render('src/templates/tag.phtml');
-        }
-
-        return $html;
-    }
-
-    /* @var array cache of tags and associated colors */
+    /* @var ?array<string, array{backColor: string, foreColor: string}> cache of tags and associated colors */
     protected $tagsColors = null;
 
     /**
      * returns item tags as HTML
      *
-     * @param array $itemTags tags for this item
-     * @param array $tags list of all the tags and their color
+     * @param string[] $itemTags tags for this item
+     * @param ?array<array{tag: string, color: string}> $tags list of all the tags and their color
      *
-     * @return string
+     * @return array<string, array{backColor: string, foreColor: string}>
      */
     public function tagsAddColors(array $itemTags, array $tags = null) {
         if ($tags === null) {
             if ($this->tagsColors === null) {
-                $tagsDao = new \daos\Tags();
-                $this->tagsColors = $this->getTagsWithColors($tagsDao->get());
+                $this->tagsColors = $this->getTagsWithColors($this->tagsDao->get());
             }
         } else {
             $this->tagsColors = $this->getTagsWithColors($tags);
@@ -93,25 +66,24 @@ class Tags extends BaseController {
      * @return void
      */
     public function color() {
-        $this->needsLoggedIn();
+        $this->authentication->needsLoggedIn();
 
         // read data
-        parse_str(\F3::get('BODY'), $data);
+        parse_str(file_get_contents('php://input'), $data);
 
-        $tag = $data['tag'];
-        $color = $data['color'];
+        $tag = isset($data['tag']) && ($trimmed = trim($data['tag'])) !== '' ? $trimmed : null;
+        $color = isset($data['color']) && ($trimmed = trim($data['color'])) !== '' ? $trimmed : null;
 
-        if (!isset($tag) || strlen(trim($tag)) === 0) {
+        if ($tag === null) {
             $this->view->error('invalid or no tag given');
         }
-        if (!isset($color) || strlen(trim($color)) === 0) {
+        if ($color === null) {
             $this->view->error('invalid or no color given');
         }
 
-        $tagsDao = new \daos\Tags();
-        $tagsDao->saveTagColor($tag, $color);
+        $this->tagsDao->saveTagColor($tag, $color);
         $this->view->jsonSuccess([
-            'success' => true
+            'success' => true,
         ]);
     }
 
@@ -122,20 +94,19 @@ class Tags extends BaseController {
      * @return void
      */
     public function listTags() {
-        $this->needsLoggedInOrPublicMode();
+        $this->authentication->needsLoggedInOrPublicMode();
 
-        $tagsDao = new \daos\Tags();
-        $tags = $tagsDao->getWithUnread();
+        $tags = $this->tagsDao->getWithUnread();
 
         $this->view->jsonSuccess($tags);
     }
 
     /**
-     * return tag => [backColor, foreColor] array
+     * Returns an associative array of tags with their foreground and background colors.
      *
-     * @param array $tags tags to colorize
+     * @param array<array{tag: string, color: string}> $tags tags to colorize
      *
-     * @return array tag color array
+     * @return array<string, array{backColor: string, foreColor: string}> tag color array
      */
     private function getTagsWithColors(array $tags) {
         $assocTags = [];

@@ -2,6 +2,11 @@
 
 namespace daos;
 
+use helpers\Authentication;
+use helpers\Configuration;
+use helpers\SpoutLoader;
+use Monolog\Logger;
+
 /**
  * Class for accessing persistent saved sources
  *
@@ -10,20 +15,36 @@ namespace daos;
  * @author     Harald Lapp <harald.lapp@gmail.com>
  * @author     Daniel Seither <post@tiwoc.de>
  * @author     Tobias Zeising <tobias.zeising@aditu.de>
+ *
+ * @mixin SourcesInterface
  */
-class Sources extends Database {
-    /** @var object Instance of backend specific sources class */
-    private $backend = null;
+class Sources {
+    /** @var SourcesInterface Instance of backend specific sources class */
+    private $backend;
+
+    /** @var Authentication authentication helper */
+    private $authentication;
+
+    /** @var Configuration configuration */
+    private $configuration;
+
+    /** @var Logger */
+    private $logger;
+
+    /** @var SpoutLoader spout loader */
+    private $spoutLoader;
 
     /**
      * Constructor.
      *
      * @return void
      */
-    public function __construct() {
-        $class = 'daos\\' . \F3::get('db_type') . '\\Sources';
-        $this->backend = new $class();
-        parent::__construct();
+    public function __construct(Authentication $authentication, Configuration $configuration, Logger $logger, SourcesInterface $backend, SpoutLoader $spoutLoader) {
+        $this->authentication = $authentication;
+        $this->configuration = $configuration;
+        $this->backend = $backend;
+        $this->logger = $logger;
+        $this->spoutLoader = $spoutLoader;
     }
 
     /**
@@ -38,15 +59,18 @@ class Sources extends Database {
         if (method_exists($this->backend, $name)) {
             return call_user_func_array([$this->backend, $name], $args);
         } else {
-            \F3::get('logger')->error('Unimplemented method for ' . \F3::get('db_type') . ': ' . $name);
+            $this->logger->error('Unimplemented method for ' . $this->configuration->dbType . ': ' . $name);
         }
     }
 
+    /**
+     * @param int|null $id
+     */
     public function get($id = null) {
         $sources = $this->backend->get($id);
         if ($id === null) {
             // remove items with private tags
-            if (!\F3::get('auth')->showPrivateTags()) {
+            if (!$this->authentication->showPrivateTags()) {
                 foreach ($sources as $idx => $source) {
                     foreach ($source['tags'] as $tag) {
                         if (strpos(trim($tag), '@') === 0) {
@@ -69,7 +93,7 @@ class Sources extends Database {
      * @param string $spout class path for the spout
      * @param array $params parameters supplied to the spout
      *
-     * @return bool|array true on success or array of errors on failure
+     * @return array<string,string>|true true on success or array of errors on failure
      *
      * @author Tobias Zeising
      */
@@ -82,8 +106,7 @@ class Sources extends Database {
         }
 
         // spout type
-        $spoutLoader = new \helpers\SpoutLoader();
-        $spout = $spoutLoader->get($spout);
+        $spout = $this->spoutLoader->get($spout);
         if ($spout === null) {
             $result['spout'] = 'invalid spout type';
         } else { // check params
@@ -108,7 +131,7 @@ class Sources extends Database {
                 if (!isset($spout->params[$id])) {
                     $result[$id] = 'unexpected param ' . $id;
 
-                    continue;
+                    return $result;
                 }
 
                 $validation = $spout->params[$id]['validation'];
@@ -117,15 +140,15 @@ class Sources extends Database {
                 }
 
                 foreach ($validation as $validate) {
-                    if ($validate === 'alpha' && !preg_match("[A-Za-Z._\b]+", $value)) {
+                    if ($validate === 'alpha' && !preg_match("([A-Za-z._\b]+)", $value)) {
                         $result[$id] = 'only alphabetic characters allowed for ' . $spout->params[$id]['title'];
-                    } elseif ($validate === 'email' && !preg_match('/^[^0-9][a-zA-Z0-9_]+([.][a-zA-Z0-9_]+)*[@][a-zA-Z0-9_]+([.][a-zA-Z0-9_]+)*[.][a-zA-Z]{2,4}$/', $value)) {
+                    } elseif ($validate === 'email' && !preg_match('(^[^0-9][a-zA-Z0-9_]+([.][a-zA-Z0-9_]+)*[@][a-zA-Z0-9_]+([.][a-zA-Z0-9_]+)*[.][a-zA-Z]{2,4}$)', $value)) {
                         $result[$id] = $spout->params[$id]['title'] . ' is not a valid email address';
                     } elseif ($validate === 'numeric' && !is_numeric($value)) {
                         $result[$id] = 'only numeric values allowed for ' . $spout->params[$id]['title'];
                     } elseif ($validate === 'int' && (int) $value != $value) {
                         $result[$id] = 'only integer values allowed for ' . $spout->params[$id]['title'];
-                    } elseif ($validate === 'alnum' && !preg_match("[A-Za-Z0-9._\b]+", $value)) {
+                    } elseif ($validate === 'alnum' && !preg_match("([A-Za-z0-9._\b]+)", $value)) {
                         $result[$id] = 'only alphanumeric values allowed for ' . $spout->params[$id]['title'];
                     } elseif ($validate === 'notempty' && strlen(trim($value)) === 0) {
                         $result[$id] = 'empty value for ' . $spout->params[$id]['title'] . ' not allowed';

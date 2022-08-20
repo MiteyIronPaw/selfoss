@@ -2,6 +2,9 @@
 
 namespace spouts\rss;
 
+use SimplePie_Item;
+use spouts\Item;
+
 /**
  * Plugin for fetching RSS feeds with image enclosures
  *
@@ -16,19 +19,36 @@ class enclosures extends feed {
     /** @var string description of this source type */
     public $description = 'Get posts from RSS feed, including media enclosures.';
 
-    public function getContent() {
-        if ($this->items !== null && $this->valid()) {
-            $content = parent::getContent();
-            foreach (@current($this->items)->get_enclosures() as $enclosure) {
-                if ($enclosure->get_medium() === 'image') {
-                    $title = htmlspecialchars(strip_tags($enclosure->get_title()));
-                    $content .= '<img src="' . $enclosure->get_link() . '" alt="' . $title . '" title="' . $title . '" />';
-                }
-            }
+    /**
+     * @return \Generator<Item<SimplePie_Item>> list of items
+     */
+    public function getItems() {
+        foreach (parent::getItems() as $item) {
+            $newContent = $this->getContentWithEnclosures($item->getContent(), $item->getExtraData());
+            yield $item->withContent($newContent);
+        }
+    }
 
+    /**
+     * @param string $content
+     *
+     * @return string
+     */
+    private function getContentWithEnclosures($content, SimplePie_Item $item) {
+        $enclosures = $item->get_enclosures();
+        if ($enclosures === null) {
             return $content;
         }
 
-        return parent::getContent();
+        $newContent = $content;
+
+        foreach ($enclosures as $enclosure) {
+            if ($enclosure->get_medium() === 'image') {
+                $title = htmlspecialchars(strip_tags((string) $enclosure->get_title()));
+                $newContent .= '<img src="' . $enclosure->get_link() . '" alt="' . $title . '" title="' . $title . '" />';
+            }
+        }
+
+        return $newContent;
     }
 }

@@ -92,5 +92,12 @@
   "lang_share_mail_label": "Dela med e-post",
   "lang_share_copy_label": "Kopiera länk till urklipp",
   "lang_error_share_native_abort": "Det går inte att dela objektet - antingen finns det inga delningsmål eller så avbröt du det.",
-  "lang_error_share_native": "Det går inte att dela objektet."
+  "lang_error_share_native": "Det går inte att dela objektet.",
+  "lang_close_entry": "Stäng",
+  "lang_experimental": "Experimentell",
+  "lang_error_unwritable_logs": "Det gick inte att skriva loggar.",
+  "lang_error_check_system_logs": "Ett fel uppstod. Kontrollera dina systemloggar.",
+  "lang_error_check_log_file": "Ett fel uppstod. Kontrollera loggfilen “{0}”.",
+  "lang_source_browse": "Bläddra",
+  "lang_tag_change_color_button_title": "Ändra färg"
 }
