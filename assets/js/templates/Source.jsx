@@ -1,23 +1,30 @@
 import React from 'react';
+import { useRef } from 'react';
+import { Button as MenuButton, Wrapper as MenuWrapper, Menu, MenuItem } from 'react-aria-menubutton';
+import { useHistory, useLocation } from 'react-router-dom';
+import { makeEntriesLinkLocation } from '../helpers/uri';
 import PropTypes from 'prop-types';
 import nullable from 'prop-types-nullable';
 import { unescape } from 'html-escaper';
 import classNames from 'classnames';
 import pick from 'lodash.pick';
 import SourceParam from './SourceParam';
+import { Spinner } from './Spinner';
 import * as sourceRequests from '../requests/sources';
 import { LoadingState } from '../requests/LoadingState';
 import { LocalizationContext } from '../helpers/i18n';
 
 // cancel source editing
-function handleCancel({ event, source, setSources, setEditedSource }) {
-    event.preventDefault();
-
+function handleCancel({
+    source,
+    sourceElem,
+    setSources,
+    setEditedSource
+}) {
     const id = source.id;
 
     if (id.toString().startsWith('new-')) {
-        const parent = $(event.target).parents('.source');
-        parent.fadeOut('fast', () => {
+        $(sourceElem.current).fadeOut('fast', () => {
             // Remove the source from this page’s model.
             setSources((sources) =>
                 sources.filter((source) => source.id !== id)
@@ -122,8 +129,10 @@ function handleSave({
 function handleDelete({
     event,
     source,
+    sourceElem,
     setSources,
-    setSourceEditDeleteLoading
+    setSourceBeingDeleted,
+    setDirty,
 }) {
     event.preventDefault();
 
@@ -135,15 +144,16 @@ function handleDelete({
     // get id
     const id = source.id;
 
+    setDirty(false);
+
     // show loading
-    setSourceEditDeleteLoading(true);
+    setSourceBeingDeleted(true);
 
     // delete on server
     sourceRequests
         .remove(id)
         .then(() => {
-            const parent = $(event.target).parents('.source');
-            parent.fadeOut('fast', () => {
+            $(sourceElem.current).fadeOut('fast', () => {
                 // Remove the source from this page’s model.
                 setSources((sources) =>
                     sources.filter((source) => source.id !== id)
@@ -157,7 +167,7 @@ function handleDelete({
             );
         })
         .catch((error) => {
-            setSourceEditDeleteLoading(false);
+            setSourceBeingDeleted(false);
             selfoss.app.showError(
                 selfoss.app._('error_delete_source') + ' ' + error.message
             );
@@ -242,6 +252,7 @@ function daysAgo(date) {
 
 function SourceEditForm({
     source,
+    sourceElem,
     sourceError,
     setSources,
     spouts,
@@ -256,17 +267,20 @@ function SourceEditForm({
     setJustSavedTimeout,
     sourceErrors,
     setSourceErrors,
+    dirty,
+    setDirty,
 }) {
     const sourceId = source.id;
     const updateEditedSource = React.useCallback(
         (changes) => {
+            setDirty(true);
             if (typeof changes === 'function') {
                 setEditedSource((source) => ({ ...source, ...changes(source) }));
             } else {
                 setEditedSource((source) => ({ ...source, ...changes }));
             }
         },
-        [setEditedSource]
+        [setEditedSource, setDirty]
     );
 
     const titleOnChange = React.useCallback(
@@ -297,7 +311,8 @@ function SourceEditForm({
     );
 
     const saveOnClick = React.useCallback(
-        (event) =>
+        (event) => {
+            setDirty(false);
             handleSave({
                 event,
                 setSources,
@@ -306,182 +321,212 @@ function SourceEditForm({
                 setSourceActionLoading,
                 setJustSavedTimeout,
                 setSourceErrors
-            }),
-        [setSources, source, setEditedSource, setSourceActionLoading, setJustSavedTimeout, setSourceErrors]
+            });
+        },
+        [setSources, source, setEditedSource, setSourceActionLoading, setJustSavedTimeout, setSourceErrors, setDirty]
     );
 
     const cancelOnClick = React.useCallback(
-        (event) =>
+        (event) => {
+            event.preventDefault();
+
+            if (dirty) {
+                const answer = confirm(selfoss.app._('source_warn_cancel_dirty'));
+                if (answer === false) {
+                    return;
+                }
+            }
+
+            setDirty(false);
             handleCancel({
                 event,
                 source,
+                sourceElem,
                 setSources,
                 setEditedSource
-            })
-        ,
-        [source, setSources, setEditedSource]
+            });
+        },
+        [source, sourceElem, setSources, setEditedSource, dirty, setDirty]
     );
 
     const _ = React.useContext(LocalizationContext);
 
+    const sourceParamsContent = (
+        sourceParamsLoading ? (
+            <Spinner size="3x" label={_('source_params_loading')} />
+        ) : (
+            sourceParamsError ?? (
+                (
+                    Object.keys(spouts).includes(source.spout)
+                    && Object.keys(spouts[source.spout].params).length > 0
+                )
+                    ? (
+                        <ul>
+                            {Object.entries(spouts[source.spout].params).map(
+                                ([spoutParamName, spoutParam]) => (
+                                    <SourceParam
+                                        key={spoutParamName}
+                                        params={source.params}
+                                        {...{
+                                            spoutParamName,
+                                            spoutParam,
+                                            sourceErrors,
+                                            sourceId,
+                                            setEditedSource,
+                                            setDirty,
+                                        }}
+                                    />
+                                )
+                            )}
+                        </ul>
+                    )
+                    : null
+            )
+        )
+
+    );
+
     return (
-        <ul className="source-edit-form">
-            {/* title */}
-            <li>
-                <label htmlFor={`title-${sourceId}`}>
-                    {_('source_title')}
-                </label>
-                <input
-                    id={`title-${sourceId}`}
-                    type="text"
-                    name="title"
-                    accessKey="t"
-                    value={source.title ?? ''}
-                    placeholder={_('source_autotitle_hint')}
-                    onChange={titleOnChange}
-                />
-                {sourceErrors['title'] ? (
-                    <span className="error">{sourceErrors['title']}</span>
-                ) : null}
-            </li>
-
-            {/* tags */}
-            <li>
-                <label htmlFor={`tags-${sourceId}`}>
-                    {_('source_tags')}
-                </label>
-                <input
-                    id={`tags-${sourceId}`}
-                    type="text"
-                    name="tags"
-                    accessKey="g"
-                    value={source.tags ?? ''}
-                    onChange={tagsOnChange}
-                />
-                <span className="source-edit-form-help">
-                    {' '}
-                    {_('source_comma')}
-                </span>
-                {sourceErrors['tags'] ? (
-                    <span className="error">{sourceErrors['tags']}</span>
-                ) : null}
-            </li>
-
-            {/* filter */}
-            <li>
-                <label htmlFor={`filter-${sourceId}`}>
-                    {_('source_filter')}
-                </label>
-                <input
-                    id={`filter-${sourceId}`}
-                    type="text"
-                    name="filter"
-                    accessKey="f"
-                    value={source.filter ?? ''}
-                    onChange={filterOnChange}
-                />
-                {sourceErrors['filter'] ? (
-                    <span className="error">{sourceErrors['filter']}</span>
-                ) : null}
-            </li>
-
-            {/* type */}
-            <li>
-                <label htmlFor={`type-${sourceId}`}>
-                    {_('source_type')}
-                </label>
-                <select
-                    id={`type-${sourceId}`}
-                    className="source-spout"
-                    name="spout"
-                    accessKey="y"
-                    onChange={spoutOnChange}
-                    value={source.spout}
-                >
-                    <option value="">{_('source_select')}</option>
-                    {Object.entries(spouts).map(([spouttype, spout]) => (
-                        <option
-                            key={spouttype}
-                            title={spout.description}
-                            value={spouttype}
-                        >
-                            {spout.name}
-                        </option>
-                    ))}
-                </select>
-                {sourceErrors['spout'] ? (
-                    <span className="error">{sourceErrors['spout']}</span>
-                ) : null}
-            </li>
-
-            {/* settings */}
-            <li
-                className={classNames({
-                    'source-params': true,
-                    loading: sourceParamsLoading
-                })}
-            >
-                {sourceParamsError ??
-                    (Object.keys(spouts).includes(source.spout) &&
-                    Object.keys(spouts[source.spout].params).length > 0 ? (
-                            <ul>
-                                {Object.entries(spouts[source.spout].params).map(
-                                    ([spoutParamName, spoutParam]) => (
-                                        <SourceParam
-                                            key={spoutParamName}
-                                            params={source.params}
-                                            {...{
-                                                spoutParamName,
-                                                spoutParam,
-                                                sourceErrors,
-                                                sourceId,
-                                                setEditedSource
-                                            }}
-                                        />
-                                    )
-                                )}
-                            </ul>
-                        ) : null)}
-            </li>
-
-            {/* error messages */}
-            {sourceError ? (
-                <li className="source-error" aria-live="assertive">
-                    {sourceError}
+        <form>
+            <ul className="source-edit-form">
+                {/* title */}
+                <li>
+                    <label htmlFor={`title-${sourceId}`}>
+                        {_('source_title')}
+                    </label>
+                    <input
+                        id={`title-${sourceId}`}
+                        type="text"
+                        name="title"
+                        accessKey="t"
+                        value={source.title ?? ''}
+                        placeholder={_('source_autotitle_hint')}
+                        onChange={titleOnChange}
+                        autoFocus
+                    />
+                    {sourceErrors['title'] ? (
+                        <span className="error">{sourceErrors['title']}</span>
+                    ) : null}
                 </li>
-            ) : null}
 
-            {/* save/delete */}
-            <li
-                className={classNames({
-                    'source-action': true,
-                    loading: sourceActionLoading
-                })}
-            >
-                <button
-                    type="submit"
-                    className="source-save"
-                    accessKey="s"
-                    onClick={saveOnClick}
-                >
-                    {_('source_save')}
-                </button>
-                {' • '}
-                <button
-                    type="submit"
-                    className="source-cancel"
-                    accessKey="c"
-                    onClick={cancelOnClick}
-                >
-                    {_('source_cancel')}
-                </button>
-            </li>
-        </ul>
+                {/* tags */}
+                <li>
+                    <label htmlFor={`tags-${sourceId}`}>
+                        {_('source_tags')}
+                    </label>
+                    <input
+                        id={`tags-${sourceId}`}
+                        type="text"
+                        name="tags"
+                        accessKey="g"
+                        value={source.tags ?? ''}
+                        onChange={tagsOnChange}
+                    />
+                    <span className="source-edit-form-help">
+                        {' '}
+                        {_('source_comma')}
+                    </span>
+                    {sourceErrors['tags'] ? (
+                        <span className="error">{sourceErrors['tags']}</span>
+                    ) : null}
+                </li>
+
+                {/* filter */}
+                <li>
+                    <label htmlFor={`filter-${sourceId}`}>
+                        {_('source_filter')}
+                    </label>
+                    <input
+                        id={`filter-${sourceId}`}
+                        type="text"
+                        name="filter"
+                        accessKey="f"
+                        value={source.filter ?? ''}
+                        onChange={filterOnChange}
+                    />
+                    {sourceErrors['filter'] ? (
+                        <span className="error">{sourceErrors['filter']}</span>
+                    ) : null}
+                </li>
+
+                {/* type */}
+                <li>
+                    <label htmlFor={`type-${sourceId}`}>
+                        {_('source_type')}
+                    </label>
+                    <select
+                        id={`type-${sourceId}`}
+                        className="source-spout"
+                        name="spout"
+                        accessKey="y"
+                        onChange={spoutOnChange}
+                        value={source.spout}
+                    >
+                        <option value="">{_('source_select')}</option>
+                        {Object.entries(spouts).map(([spouttype, spout]) => (
+                            <option
+                                key={spouttype}
+                                title={spout.description}
+                                value={spouttype}
+                            >
+                                {spout.name}
+                            </option>
+                        ))}
+                    </select>
+                    {sourceErrors['spout'] ? (
+                        <span className="error">{sourceErrors['spout']}</span>
+                    ) : null}
+                </li>
+
+                {/* settings */}
+                {sourceParamsContent ? (
+                    <li className="source-params">
+                        {sourceParamsContent}
+                    </li>
+                ) : null}
+
+                {/* error messages */}
+                {sourceError ? (
+                    <li className="source-error" aria-live="assertive">
+                        {sourceError}
+                    </li>
+                ) : null}
+
+                {/* save/delete */}
+                <li className="source-action">
+                    <button
+                        type="submit"
+                        className="source-save"
+                        accessKey="s"
+                        onClick={saveOnClick}
+                    >
+                        {_('source_save')}
+
+                        {sourceActionLoading &&
+                            <React.Fragment>
+                                {' '}
+                                <Spinner label={_('source_saving')} />
+                            </React.Fragment>
+                        }
+                    </button>
+                    {' • '}
+                    <button
+                        type="submit"
+                        className="source-cancel"
+                        accessKey="c"
+                        onClick={cancelOnClick}
+                    >
+                        {_('source_cancel')}
+                    </button>
+                </li>
+            </ul>
+        </form>
     );
 }
 
 SourceEditForm.propTypes = {
     source: PropTypes.object.isRequired,
+    sourceElem: PropTypes.object.isRequired,
     sourceError: PropTypes.string,
     setSources: PropTypes.func.isRequired,
     spouts: PropTypes.object.isRequired,
@@ -496,9 +541,11 @@ SourceEditForm.propTypes = {
     setJustSavedTimeout: PropTypes.func.isRequired,
     sourceErrors: PropTypes.objectOf(PropTypes.string).isRequired,
     setSourceErrors: PropTypes.func.isRequired,
+    dirty: PropTypes.bool.isRequired,
+    setDirty: PropTypes.func.isRequired,
 };
 
-export default function Source({ source, setSources, spouts, setSpouts }) {
+export default function Source({ source, setSources, spouts, setSpouts, dirty, setDirtySources }) {
     const isNew = !source.title;
     let classes = {
         source: true,
@@ -510,10 +557,7 @@ export default function Source({ source, setSources, spouts, setSpouts }) {
         isNew ? { ...source } : null
     );
     const [sourceActionLoading, setSourceActionLoading] = React.useState(false);
-    const [
-        sourceEditDeleteLoading,
-        setSourceEditDeleteLoading
-    ] = React.useState(false);
+    const [sourceBeingDeleted, setSourceBeingDeleted] = React.useState(false);
     const [sourceParamsLoading, setSourceParamsLoading] = React.useState(false);
     const [justSavedTimeout, setJustSavedTimeout] = React.useState(null);
     const [sourceParamsError, setSourceParamsError] = React.useState(null);
@@ -534,21 +578,48 @@ export default function Source({ source, setSources, spouts, setSpouts }) {
         [source]
     );
 
-    const deleteOnClick = React.useCallback(
-        (event) =>
-            handleDelete({
-                event,
-                source,
-                setSources,
-                setSourceEditDeleteLoading
-            }),
-        [source, setSources]
+    const setDirty = React.useCallback(
+        (dirty) => {
+            setDirtySources((dirtySources) => ({
+                ...dirtySources,
+                [source.id]: dirty,
+            }));
+        },
+        [source.id, setDirtySources]
+    );
+
+    const history  = useHistory();
+    const location  = useLocation();
+
+    const sourceElem = useRef(null);
+
+    const extraMenuOnSelection = React.useCallback(
+        (value, event) => {
+            if (value === 'delete') {
+                handleDelete({
+                    event,
+                    source,
+                    sourceElem,
+                    setSources,
+                    setSourceBeingDeleted,
+                    setDirty,
+                });
+            } else if (value === 'browse') {
+                history.push(makeEntriesLinkLocation(location, { category: `source-${source.id}` }));
+            }
+        },
+        [source, sourceElem, setSources, setDirty, location, history]
     );
 
     const _ = React.useContext(LocalizationContext);
 
     return (
-        <form className={classNames(classes)}>
+        <li
+            className={classNames(classes)}
+            data-id={source.id}
+            id={`source-${source.id}`}
+            ref={sourceElem}
+        >
             <div className="source-icon">
                 {source.icon && source.icon != '0' ? (
                     <img
@@ -558,39 +629,66 @@ export default function Source({ source, setSources, spouts, setSpouts }) {
                     />
                 ) : null}
             </div>
-            <div className="source-title">
+            <h2 className="source-title">
                 {source.title
                     ? unescape(source.title)
                     : _('source_new')}
-            </div>{' '}
-            <div
-                className={classNames({
-                    'source-edit-delete': true,
-                    loading: sourceEditDeleteLoading
-                })}
-            >
-                <button
-                    type="button"
-                    accessKey="e"
-                    className={classNames({
-                        'source-showparams': true,
-                        saved: justSavedTimeout !== null
-                    })}
-                    onClick={editOnClick}
+            </h2>{' '}
+            <div className="source-edit-delete">
+
+                {!editedSource &&
+                    <React.Fragment>
+                        <button
+                            type="button"
+                            accessKey="e"
+                            className={classNames({
+                                'source-showparams': true,
+                                saved: justSavedTimeout !== null
+                            })}
+                            onClick={editOnClick}
+                            aria-expanded={!!editedSource}
+                        >
+                            {_(
+                                justSavedTimeout !== null ? 'source_saved' : 'source_edit'
+                            )}
+                        </button>
+                        {' • '}
+                    </React.Fragment>
+                }
+                <MenuWrapper
+                    className="popup-menu-wrapper"
+                    onSelection={extraMenuOnSelection}
                 >
-                    {_(
-                        justSavedTimeout !== null ? 'source_saved' : 'source_edit'
-                    )}
-                </button>
-                {' • '}
-                <button
-                    type="button"
-                    accessKey="d"
-                    className="source-delete"
-                    onClick={deleteOnClick}
-                >
-                    {_('source_delete')}
-                </button>
+                    <MenuButton
+                        className="source-menu-button"
+                    >
+                        {_('source_menu')}
+                        {sourceBeingDeleted &&
+                            <React.Fragment>
+                                {' '}
+                                <Spinner label={_('source_deleting')} />
+                            </React.Fragment>
+                        }
+                    </MenuButton>
+                    <Menu
+                        className="popup-menu"
+                    >
+                        <MenuItem
+                            accessKey="d"
+                            className="popup-menu-item source-browse"
+                            value="browse"
+                        >
+                            {_('source_browse')}
+                        </MenuItem>
+                        <MenuItem
+                            accessKey="d"
+                            className="popup-menu-item source-delete"
+                            value="delete"
+                        >
+                            {_('source_delete')}
+                        </MenuItem>
+                    </Menu>
+                </MenuWrapper>
             </div>
             <div className="source-days">
                 {source.lastentry
@@ -617,13 +715,16 @@ export default function Source({ source, setSources, spouts, setSpouts }) {
                         setSourceParamsError,
                         setJustSavedTimeout,
                         sourceErrors,
-                        setSourceErrors
+                        setSourceErrors,
+                        dirty,
+                        setDirty,
+                        sourceElem,
                     }}
                     sourceError={source.error}
                     source={editedSource}
                 />
             ) : null}
-        </form>
+        </li>
     );
 }
 
@@ -632,4 +733,6 @@ Source.propTypes = {
     setSources: PropTypes.func.isRequired,
     spouts: PropTypes.object.isRequired,
     setSpouts: PropTypes.func.isRequired,
+    dirty: PropTypes.bool.isRequired,
+    setDirtySources: PropTypes.func.isRequired,
 };

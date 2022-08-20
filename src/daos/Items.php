@@ -13,6 +13,8 @@ use Monolog\Logger;
  * @license    GPLv3 (https://www.gnu.org/licenses/gpl-3.0.html)
  * @author     Harald Lapp <harald.lapp@gmail.com>
  * @author     Tobias Zeising <tobias.zeising@aditu.de>
+ *
+ * @mixin ItemsInterface
  */
 class Items {
     /** @var ItemsInterface Instance of backend specific items class */
@@ -74,33 +76,11 @@ class Items {
     /**
      * returns items
      *
-     * @param mixed $options search, offset and filter params
+     * @param ItemOptions $options search, offset and filter params
      *
      * @return mixed items as array
      */
-    public function get($options = []) {
-        $options = array_merge(
-            [
-                'starred' => false,
-                'offset' => 0,
-                'search' => false,
-                'items' => $this->configuration->itemsPerpage,
-            ],
-            $options
-        );
-
-        if (isset($options['fromDatetime']) && strlen($options['fromDatetime']) > 0) {
-            $options['fromDatetime'] = new \DateTime($options['fromDatetime']);
-        } else {
-            unset($options['fromDatetime']);
-        }
-
-        if (isset($options['updatedsince']) && strlen($options['updatedsince']) > 0) {
-            $options['updatedsince'] = new \DateTime($options['updatedsince']);
-        } else {
-            unset($options['updatedsince']);
-        }
-
+    public function get(ItemOptions $options) {
         $items = $this->backend->get($options);
 
         // remove private posts with private tags
@@ -117,7 +97,7 @@ class Items {
         }
 
         // remove posts with hidden tags
-        if (!isset($options['tag']) || strlen($options['tag']) === 0) {
+        if ($options->tag !== null) {
             foreach ($items as $idx => $item) {
                 foreach ($item['tags'] as $tag) {
                     if (strpos(trim($tag), '#') === 0) {

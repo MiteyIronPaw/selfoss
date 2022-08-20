@@ -2,6 +2,7 @@
 
 namespace daos\mysql;
 
+use daos\DatabaseInterface;
 use helpers\Configuration;
 
 /**
@@ -18,10 +19,10 @@ class Tags implements \daos\TagsInterface {
     /** @var Configuration configuration */
     private $configuration;
 
-    /** @var \daos\Database database connection */
+    /** @var DatabaseInterface database connection */
     protected $database;
 
-    public function __construct(Configuration $configuration, \daos\Database $database) {
+    public function __construct(Configuration $configuration, DatabaseInterface $database) {
         $this->configuration = $configuration;
         $this->database = $database;
     }
@@ -79,7 +80,7 @@ class Tags implements \daos\TagsInterface {
     /**
      * returns all tags with color
      *
-     * @return array of all tags
+     * @return array{tag: string, color: string}[]
      */
     public function get() {
         return $this->database->exec('SELECT
@@ -91,7 +92,7 @@ class Tags implements \daos\TagsInterface {
     /**
      * returns all tags with color and unread count
      *
-     * @return array of all tags
+     * @return array{tag: string, color: string, unread: int}[]
      */
     public function getWithUnread() {
         $stmt = static::$stmt;
@@ -104,7 +105,7 @@ class Tags implements \daos\TagsInterface {
                    GROUP BY tags.tag, tags.color
                    ORDER BY LOWER(tags.tag);';
 
-        return $stmt::ensureRowTypes($this->database->exec($select), ['unread' => \daos\PARAM_INT]);
+        return $stmt::ensureRowTypes($this->database->exec($select), ['unread' => DatabaseInterface::PARAM_INT]);
     }
 
     /**

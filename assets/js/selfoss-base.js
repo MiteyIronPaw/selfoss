@@ -1,6 +1,5 @@
 import ReactDOM from 'react-dom';
 import { getInstanceInfo, login, logout } from './requests/common';
-import * as sourceRequests from './requests/sources';
 import { getAllTags } from './requests/tags';
 import * as ajax from './helpers/ajax';
 import { ValueListenable } from './helpers/ValueListenable';
@@ -82,7 +81,7 @@ var selfoss = {
 
         if ('serviceWorker' in navigator) {
             selfoss.windowLoaded.then(function() {
-                navigator.serviceWorker.register('../selfoss-sw-offline.js')
+                navigator.serviceWorker.register(new URL('../selfoss-sw-offline.js', import.meta.url), { type: 'module' })
                     .then(function(reg) {
                         selfoss.listenWaitingSW(reg, function(reg) {
                             selfoss.app.notifyNewVersion(function() {
@@ -100,12 +99,6 @@ var selfoss = {
                 }
             );
         }
-
-        document.body.classList.toggle('publicupdate', configuration.allowPublicUpdate);
-        document.body.classList.toggle('publicmode', configuration.publicMode);
-        document.body.classList.toggle('authenabled', configuration.authEnabled);
-        document.body.classList.toggle('loggedin', !configuration.authEnabled);
-        document.body.classList.toggle('auto_mark_as_read', configuration.autoMarkAsRead);
 
         if (configuration.language !== null) {
             document.documentElement.setAttribute('lang', configuration.language);
@@ -136,17 +129,14 @@ var selfoss = {
 
         selfoss.attachApp();
 
-        function loggedinChanged(event) {
-            document.body.classList.toggle('loggedin', event.value);
+        if (configuration.authEnabled) {
+            selfoss.loggedin.update(window.localStorage.getItem('onlineSession') == 'true');
         }
-        // It might happen that the value changes before event handler is attached.
-        loggedinChanged({ value: selfoss.loggedin.value });
-        selfoss.loggedin.addEventListener('change', loggedinChanged);
 
-        if (selfoss.hasSession() || !configuration.authEnabled || configuration.publicMode) {
+        if (selfoss.isAllowedToRead()) {
             selfoss.initUi();
         } else {
-            selfoss.history.push('/login');
+            selfoss.history.push('/sign/in');
         }
     },
 
@@ -161,8 +151,11 @@ var selfoss = {
         document.body.appendChild(mainUi);
         mainUi.classList.add('app-toplevel');
 
+        // BrowserRouter expects no slash at the end.
+        const basePath = (new URL(document.baseURI)).pathname.replace(/\/$/, '');
+
         ReactDOM.render(
-            createApp((app) => {
+            createApp(basePath, (app) => {
                 selfoss.app = app;
             }),
             mainUi
@@ -185,9 +178,6 @@ var selfoss = {
 
             // init FancyBox
             selfoss.initFancyBox();
-
-            // setup periodic server status sync
-            window.setInterval(selfoss.db.sync, 60 * 1000);
         }
     },
 
@@ -208,7 +198,6 @@ var selfoss = {
 
 
     hasSession: function() {
-        selfoss.loggedin.update(window.localStorage.getItem('onlineSession') == 'true');
         return selfoss.loggedin.value;
     },
 
@@ -248,13 +237,49 @@ var selfoss = {
 
     logout: function() {
         selfoss.clearSession();
-        if (!document.body.classList.contains('publicmode')) {
-            selfoss.history.push('/login');
+        if (!selfoss.config.publicMode) {
+            selfoss.history.push('/sign/in');
         }
 
         logout().catch((error) => {
             selfoss.app.showError(selfoss.app._('error_logout') + ' ' + error.message);
         });
+    },
+
+    /**
+     * Checks whether the current user is allowed to perform read operations.
+     *
+     * @returns {boolean}
+     */
+    isAllowedToRead() {
+        return selfoss.hasSession() || !selfoss.config.authEnabled || selfoss.config.publicMode;
+    },
+
+    /**
+     * Checks whether the current user is allowed to perform update-tier operations.
+     *
+     * @returns {boolean}
+     */
+    isAllowedToUpdate() {
+        return selfoss.hasSession() || !selfoss.config.authEnabled || selfoss.config.allowPublicUpdate;
+    },
+
+    /**
+     * Checks whether the current user is allowed to perform write operations.
+     *
+     * @returns {boolean}
+     */
+    isAllowedToWrite() {
+        return selfoss.hasSession() || !selfoss.config.authEnabled;
+    },
+
+    /**
+     * Checks whether the current user is allowed to perform write operations.
+     *
+     * @returns {boolean}
+     */
+    isOnline() {
+        return selfoss.db.online;
     },
 
 
@@ -299,6 +324,17 @@ var selfoss = {
         return false;
     },
 
+
+    /**
+     * Override these functions to customize selfoss behaviour.
+     */
+    extensionPoints: {
+        /**
+         * Called when an article is first expanded.
+         * @param {HTMLElement} HTML element containing the article contents
+         */
+        processItemContents() {},
+    },
 
     /**
      * refresh stats.
@@ -385,35 +421,6 @@ var selfoss = {
      */
     initFancyBox: function() {
         $.fancybox.defaults.hash = false;
-    },
-
-
-    /**
-     * Triggers fetching news from all sources.
-     * @return Promise<undefined>
-     */
-    reloadAll: function() {
-        if (!selfoss.db.online) {
-            return Promise.resolve();
-        }
-
-        return sourceRequests.refreshAll().then(() => {
-            // probe stats and prompt reload to the user
-            selfoss.dbOnline.sync().then(function() {
-                if (selfoss.app.state.unreadItemsCount > 0) {
-                    selfoss.app.showMessage(selfoss.app._('sources_refreshed'), [
-                        {
-                            label: selfoss.app._('reload_list'),
-                            callback() {
-                                document.querySelector('#nav-filter-unread').click();
-                            }
-                        }
-                    ]);
-                }
-            });
-        }).catch((error) => {
-            selfoss.app.showError(selfoss.app._('error_refreshing_source') + ' ' + error.message);
-        });
     },
 
 

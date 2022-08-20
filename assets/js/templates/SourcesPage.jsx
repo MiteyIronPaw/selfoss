@@ -1,9 +1,13 @@
 import React from 'react';
+import { useMemo } from 'react';
+import { Prompt } from 'react-router';
+import { useHistory, useLocation, useRouteMatch } from 'react-router-dom';
 import Source from './Source';
 import { SpinnerBig } from './Spinner';
 import { LoadingState } from '../requests/LoadingState';
 import * as sourceRequests from '../requests/sources';
 import { getAllSources } from '../requests/sources';
+import { useShouldReload } from '../helpers/hooks';
 import { LocalizationContext } from '../helpers/i18n';
 import { HttpError } from '../errors';
 
@@ -12,27 +16,33 @@ function rand() {
     return Math.floor(Math.random() * 2147483647);
 }
 
-function handleAddSource({ event, setSources, setSpouts }) {
-    event.preventDefault();
+function handleAddSource({
+    event = null,
+    setSources,
+    setSpouts,
+    extraInitialData = {},
+}) {
+    if (event) {
+        event.preventDefault();
+    }
 
-    // add new source
+    // Add new empty source.
+    setSources((sources) => [{ id: 'new-' + rand(), ...extraInitialData }, ...sources]);
+
+    // Refresh the spout datea
     sourceRequests
         .getSpouts()
         .then(({ spouts }) => {
             // Update spout data.
             setSpouts(spouts);
-            // Add new empty source.
-            setSources((sources) => [{ id: 'new-' + rand() }, ...sources]);
         })
-        .catch((error) => {
-            selfoss.app.showError(
-                selfoss.app._('error_add_source') + ' ' + error.message
-            );
+        .catch(() => {
+            console.error('Unable to update spouts, falling back to previously fetched list.');
         });
 }
 
 // load sources
-function loadSources({ abortController, setSpouts, setSources, setLoadingState }) {
+function loadSources({ abortController, location, setSpouts, setSources, setLoadingState }) {
     if (abortController.signal.aborted) {
         return Promise.resolve();
     }
@@ -47,6 +57,19 @@ function loadSources({ abortController, setSpouts, setSources, setLoadingState }
         setSpouts(spouts);
         setSources(sources);
         setLoadingState(LoadingState.SUCCESS);
+
+        if (location.hash.startsWith('#source-')) {
+            const source = document.querySelector(`.source[data-id="${location.hash.replace(/^#source-/, '')}"]`);
+
+            if (!source) {
+                return;
+            }
+
+            // needs to be delayed for some reason
+            requestAnimationFrame(() => {
+                source.scrollIntoView();
+            });
+        }
     }).catch((error) => {
         if (error.name === 'AbortError' || abortController.signal.aborted) {
             return;
@@ -54,9 +77,9 @@ function loadSources({ abortController, setSpouts, setSources, setLoadingState }
 
         selfoss.handleAjaxError(error, false).catch(function(error) {
             if (error instanceof HttpError && error.response.status === 403) {
-                selfoss.history.push('/login');
-                // TODO: Use location state once we switch to BrowserRouter
-                selfoss.app.setLoginFormError(selfoss.app._('error_session_expired'));
+                selfoss.history.push('/sign/in', {
+                    error: selfoss.app._('error_session_expired'),
+                });
                 return;
             }
 
@@ -73,15 +96,43 @@ export default function SourcesPage() {
 
     const [loadingState, setLoadingState] = React.useState(LoadingState.INITIAL);
 
+    const forceReload = useShouldReload();
+
+    const history = useHistory();
+    const location = useLocation();
+    const isAdding = useRouteMatch('/manage/sources/add');
+
     React.useEffect(() => {
         const abortController = new AbortController();
 
-        loadSources({ abortController, setSpouts, setSources, setLoadingState });
+        loadSources({ abortController, location, setSpouts, setSources, setLoadingState })
+            .then(() => {
+                if (isAdding) {
+                    const params = new URLSearchParams(location.search);
+                    handleAddSource({
+                        setSources,
+                        setSpouts,
+                        extraInitialData: {
+                            spout: 'spouts\\rss\\feed',
+                            params: {
+                                url: params.get('url') ?? '',
+                            }
+                        },
+                    });
+
+                    // Clear the value from the state so it does not bug us forever.
+                    history.replace('/manage/sources');
+                }
+            });
 
         return () => {
             abortController.abort();
         };
-    }, []);
+    }, [
+        forceReload,
+        // location.search and history are intentionally omitted
+        // to prevent reloading when the presets are cleaned from the URL.
+    ]);
 
     const addOnClick = React.useCallback(
         (event) => handleAddSource({ event, setSources, setSpouts }),
@@ -90,9 +141,15 @@ export default function SourcesPage() {
 
     const _ = React.useContext(LocalizationContext);
 
+    const [dirtySources, setDirtySources] = React.useState({});
+    const isDirty = useMemo(
+        () => Object.values(dirtySources).includes(true),
+        [dirtySources]
+    );
+
     if (loadingState === LoadingState.LOADING) {
         return (
-            <SpinnerBig />
+            <SpinnerBig label={_('sources_loading')} />
         );
     }
 
@@ -102,6 +159,11 @@ export default function SourcesPage() {
 
     return (
         <React.Fragment>
+            <Prompt
+                when={isDirty}
+                message={_('sources_leaving_unsaved_prompt')}
+            />
+
             <button
                 className="source-add"
                 onClick={addOnClick}
@@ -114,12 +176,24 @@ export default function SourcesPage() {
             <a className="source-opml" href="opml">
                 {_('source_opml')}
             </a>
-            {sources.map((source) => (
-                <Source
-                    key={source.id}
-                    {...{ source, setSources, spouts, setSpouts }}
-                />
-            ))}
+            {sources
+                ? (
+                    <ul>
+                        {sources.map((source) => (
+                            <Source
+                                key={source.id}
+                                dirty={dirtySources[source.id] ?? false}
+                                {...{ source, setSources, spouts, setSpouts, setDirtySources }}
+                            />
+                        ))}
+                    </ul>
+                )
+                : (
+                    <p>
+                        {_('no_sources')}
+                    </p>
+                )
+            }
         </React.Fragment>
     );
 }

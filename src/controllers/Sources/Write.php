@@ -2,7 +2,6 @@
 
 namespace controllers\Sources;
 
-use Base;
 use helpers\Authentication;
 use helpers\ContentLoader;
 use helpers\SpoutLoader;
@@ -40,21 +39,20 @@ class Write {
     }
 
     /**
-     * render spouts params
+     * Update source data or create a new source.
      * json
      *
-     * @param Base $f3 fatfree base instance
-     * @param array $params query string parameters
+     * @param ?int $id ID of source to update, or null to create a new one
      *
      * @return void
      */
-    public function write(Base $f3, array $params) {
+    public function write($id = null) {
         $this->authentication->needsLoggedIn();
 
         // read data
-        $headers = \F3::get('HEADERS');
-        $body = \F3::get('BODY');
-        if (isset($headers['Content-Type']) && strpos($headers['Content-Type'], 'application/json') === 0) {
+        $body = file_get_contents('php://input');
+        $contentType = isset($_SERVER['CONTENT_TYPE']) ? $_SERVER['CONTENT_TYPE'] : '';
+        if (strpos($contentType, 'application/json') === 0) {
             $data = json_decode($body, true);
         } else {
             parse_str($body, $data);
@@ -91,17 +89,16 @@ class Write {
         unset($data['tags']);
 
         // check if source already exists
-        $id = isset($params['id']) ? $params['id'] : null;
         $sourceExists = $id !== null && $this->sourcesDao->isValid('id', $id);
 
         // load password value if not changed for spouts containing passwords
+        $oldParams = null;
         if ($sourceExists) {
             $spoutInstance = $this->spoutLoader->get($spout);
 
             foreach ($spoutInstance->params as $spoutParamName => $spoutParam) {
-                if ($spoutParam['type'] === 'password'
-                    && empty($data[$spoutParamName])) {
-                    if (!isset($oldSource)) {
+                if ($spoutParam['type'] === 'password' && empty($data[$spoutParamName])) {
+                    if ($oldParams === null) {
                         $oldSource = $this->sourcesDao->get($id);
                         $oldParams = json_decode(html_entity_decode($oldSource['params']), true);
                     }
@@ -137,7 +134,7 @@ class Write {
         ];
 
         // only for selfoss ui (update stats in navigation)
-        if ($f3->ajax()) {
+        if ($this->view->isAjax()) {
             // get new tag list with updated count values
             $return['tags'] = $this->tagsDao->getWithUnread();
 

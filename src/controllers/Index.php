@@ -2,7 +2,8 @@
 
 namespace controllers;
 
-use Base;
+use Bramus\Router\Router;
+use daos\ItemOptions;
 use helpers\Authentication;
 use helpers\View;
 use helpers\ViewHelper;
@@ -21,8 +22,8 @@ class Index {
     /** @var \daos\Items items */
     private $itemsDao;
 
-    /** @var \controllers\Sources sources controller */
-    private $sourcesController;
+    /** @var Router router */
+    private $router;
 
     /** @var \daos\Sources sources */
     private $sourcesDao;
@@ -39,10 +40,10 @@ class Index {
     /** @var ViewHelper */
     private $viewHelper;
 
-    public function __construct(Authentication $authentication, \daos\Items $itemsDao, Sources $sourcesController, \daos\Sources $sourcesDao, Tags $tagsController, \daos\Tags $tagsDao, View $view, ViewHelper $viewHelper) {
+    public function __construct(Authentication $authentication, \daos\Items $itemsDao, Router $router, \daos\Sources $sourcesDao, Tags $tagsController, \daos\Tags $tagsDao, View $view, ViewHelper $viewHelper) {
         $this->authentication = $authentication;
         $this->itemsDao = $itemsDao;
-        $this->sourcesController = $sourcesController;
+        $this->router = $router;
         $this->sourcesDao = $sourcesDao;
         $this->tagsController = $tagsController;
         $this->tagsDao = $tagsDao;
@@ -54,14 +55,12 @@ class Index {
      * home site
      * json
      *
-     * @param Base $f3 fatfree base instance
-     *
      * @return void
      */
-    public function home(Base $f3) {
+    public function home() {
         $options = $_GET;
 
-        if (!$f3->ajax()) {
+        if (!$this->view->isAjax()) {
             $home = BASEDIR . '/public/index.html';
             if (!file_exists($home)) {
                 http_response_code(500);
@@ -70,45 +69,39 @@ class Index {
             }
 
             // show as full html page
-            readfile($home);
+            echo str_replace('@basePath@', $this->router->getBasePath(), file_get_contents($home));
 
             return;
         }
 
         $this->authentication->needsLoggedInOrPublicMode();
 
-        // get search param
-        $search = null;
-        if (isset($options['search']) && strlen($options['search']) > 0) {
-            $search = $options['search'];
-        }
-
         // load tags
         $tags = $this->tagsDao->getWithUnread();
 
         // load items
-        $items = $this->loadItems($options, $tags, $search);
+        $items = $this->loadItems($options, $tags);
 
         // load stats
         $stats = $this->itemsDao->stats();
-        $this->view->statsAll = $stats['total'];
-        $this->view->statsUnread = $stats['unread'];
-        $this->view->statsStarred = $stats['starred'];
+        $statsAll = $stats['total'];
+        $statsUnread = $stats['unread'];
+        $statsStarred = $stats['starred'];
 
         foreach ($tags as $tag) {
             if (strpos($tag['tag'], '#') !== 0) {
                 continue;
             }
-            $this->view->statsUnread -= $tag['unread'];
+            $statsUnread -= $tag['unread'];
         }
 
         $result = [
             'lastUpdate' => \helpers\ViewHelper::date_iso8601($this->itemsDao->lastUpdate()),
             'hasMore' => $items['hasMore'],
             'entries' => $items['entries'],
-            'all' => $this->view->statsAll,
-            'unread' => $this->view->statsUnread,
-            'starred' => $this->view->statsStarred,
+            'all' => $statsAll,
+            'unread' => $statsUnread,
+            'starred' => $statsStarred,
             'tags' => $tags,
         ];
 
@@ -125,14 +118,14 @@ class Index {
      *
      * @param array $params request parameters
      * @param array $tags information about tags
-     * @param ?string $search optional search query
      *
      * @return array{entries: array, hasMore: bool} html with items
      */
-    private function loadItems(array $params, array $tags, $search = null) {
+    private function loadItems(array $params, array $tags) {
+        $options = ItemOptions::fromUser($params);
         $entries = [];
-        foreach ($this->itemsDao->get($params) as $item) {
-            $entries[] = $this->viewHelper->preprocessEntry($item, $this->tagsController, $tags, $search);
+        foreach ($this->itemsDao->get($options) as $item) {
+            $entries[] = $this->viewHelper->preprocessEntry($item, $this->tagsController, $tags, $options->search);
         }
 
         return [

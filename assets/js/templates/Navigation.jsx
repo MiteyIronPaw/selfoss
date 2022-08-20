@@ -11,6 +11,7 @@ import NavToolBar from './NavToolBar';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import * as icons from '../icons';
 import { LoadingState } from '../requests/LoadingState';
+import { useAllowedToWrite } from '../helpers/authorizations';
 import { LocalizationContext } from '../helpers/i18n';
 
 export default function Navigation({
@@ -30,13 +31,25 @@ export default function Navigation({
     sources,
     setSources,
     tags,
+    reloadAll,
 }) {
     const _ = React.useContext(LocalizationContext);
+
+    const canWrite = useAllowedToWrite();
 
     return (
         <React.Fragment>
             <div id="nav-logo"></div>
-            <button accessKey="a" id="nav-mark" onClick={entriesPage !== null ? entriesPage.markVisibleRead : null} disabled={entriesPage === null}>{_('markread')}</button>
+            {canWrite &&
+                <button
+                    accessKey="a"
+                    id="nav-mark"
+                    onClick={entriesPage !== null ? entriesPage.markVisibleRead : null}
+                    disabled={entriesPage === null}
+                >
+                    {_('markread')}
+                </button>
+            }
 
             <NavFilters
                 setNavExpanded={setNavExpanded}
@@ -79,7 +92,10 @@ export default function Navigation({
                 offlineState={offlineState}
             />
 
-            <NavToolBar setNavExpanded={setNavExpanded} />
+            <NavToolBar
+                reloadAll={reloadAll}
+                setNavExpanded={setNavExpanded}
+            />
         </React.Fragment>
     );
 }
@@ -101,4 +117,5 @@ Navigation.propTypes = {
     sources: PropTypes.arrayOf(PropTypes.object).isRequired,
     setSources: PropTypes.func.isRequired,
     tags: PropTypes.arrayOf(PropTypes.object).isRequired,
+    reloadAll: PropTypes.func.isRequired
 };

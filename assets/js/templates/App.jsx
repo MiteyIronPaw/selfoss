@@ -2,7 +2,7 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import nullable from 'prop-types-nullable';
 import {
-    HashRouter as Router,
+    BrowserRouter as Router,
     Switch,
     Route,
     Redirect,
@@ -23,6 +23,7 @@ import * as icons from '../icons';
 import { ENTRIES_ROUTE_PATTERN } from '../helpers/uri';
 import { i18nFormat, LocalizationContext } from '../helpers/i18n';
 import { LoadingState } from '../requests/LoadingState';
+import * as sourceRequests from '../requests/sources';
 import locales from '../locales';
 
 
@@ -97,14 +98,13 @@ function PureApp({
     unreadItemsOfflineCount,
     starredItemsCount,
     starredItemsOfflineCount,
-    loginFormError,
-    setLoginFormError,
     globalMessage,
     sourcesState,
     setSourcesState,
     sources,
     setSources,
     tags,
+    reloadAll,
 }) {
     const [navExpanded, setNavExpanded] = React.useState(false);
     const [smartphone, setSmartphone] = React.useState(false);
@@ -180,12 +180,10 @@ function PureApp({
             <Message message={globalMessage} />
 
             <Switch>
-                <Route path="/login">
+                <Route path="/sign/in">
                     {/* menu open for smartphone */}
                     <div id="loginform" role="main">
                         <LoginForm
-                            error={loginFormError}
-                            setError={setLoginFormError}
                             {...{offlineEnabled, setOfflineEnabled}}
                         />
                     </div>
@@ -229,6 +227,7 @@ function PureApp({
                                 sources={sources}
                                 setSources={setSources}
                                 tags={tags}
+                                reloadAll={reloadAll}
                             />
                         </div>
                     </Collapse>
@@ -253,7 +252,7 @@ function PureApp({
                                     />
                                 )}
                             </Route>
-                            <Route path="/sources">
+                            <Route path="/manage/sources">
                                 <SourcesPage />
                             </Route>
                             <Route path="*">
@@ -277,14 +276,13 @@ PureApp.propTypes = {
     unreadItemsOfflineCount: PropTypes.number.isRequired,
     starredItemsCount: PropTypes.number.isRequired,
     starredItemsOfflineCount: PropTypes.number.isRequired,
-    loginFormError: PropTypes.string.isRequired,
-    setLoginFormError: PropTypes.func.isRequired,
     globalMessage: nullable(PropTypes.object).isRequired,
     sourcesState: PropTypes.oneOf(Object.values(LoadingState)).isRequired,
     setSourcesState: PropTypes.func.isRequired,
     sources: PropTypes.arrayOf(PropTypes.object).isRequired,
     setSources: PropTypes.func.isRequired,
     tags: PropTypes.arrayOf(PropTypes.object).isRequired,
+    reloadAll: PropTypes.func.isRequired,
 };
 
 export default class App extends React.Component {
@@ -345,11 +343,6 @@ export default class App extends React.Component {
             allItemsOfflineCount: 0,
 
             /**
-             * login form error
-             */
-            loginFormError: '',
-
-            /**
              * Global message popup.
              * @var ?Object.{message: string, actions: Array.<Object.{label: string, callback: function>}, isError: bool}
              */
@@ -368,8 +361,8 @@ export default class App extends React.Component {
         this.setStarredItemsOfflineCount = this.setStarredItemsOfflineCount.bind(this);
         this.setAllItemsCount = this.setAllItemsCount.bind(this);
         this.setAllItemsOfflineCount = this.setAllItemsOfflineCount.bind(this);
-        this.setLoginFormError = this.setLoginFormError.bind(this);
         this.setGlobalMessage = this.setGlobalMessage.bind(this);
+        this.reloadAll = this.reloadAll.bind(this);
     }
 
     setTags(tags) {
@@ -492,16 +485,6 @@ export default class App extends React.Component {
         }
     }
 
-    setLoginFormError(loginFormError) {
-        if (typeof loginFormError === 'function') {
-            this.setState({
-                loginFormError: loginFormError(this.state.loginFormError)
-            });
-        } else {
-            this.setState({ loginFormError });
-        }
-    }
-
     setGlobalMessage(globalMessage) {
         if (typeof globalMessage === 'function') {
             this.setState({
@@ -512,6 +495,33 @@ export default class App extends React.Component {
         }
     }
 
+    /**
+     * Triggers fetching news from all sources.
+     * @return Promise<undefined>
+     */
+    reloadAll() {
+        if (!selfoss.isOnline()) {
+            return Promise.resolve();
+        }
+
+        return sourceRequests.refreshAll().then(() => {
+            // probe stats and prompt reload to the user
+            selfoss.dbOnline.sync().then(() => {
+                if (this.state.unreadItemsCount > 0) {
+                    this.showMessage(this._('sources_refreshed'), [
+                        {
+                            label: this._('reload_list'),
+                            callback() {
+                                document.querySelector('#nav-filter-unread').click();
+                            }
+                        }
+                    ]);
+                }
+            });
+        }).catch((error) => {
+            this.showError(this._('error_refreshing_source') + ' ' + error.message);
+        });
+    }
 
     /**
     * Obtain a localized message for given key, substituting placeholders for values, when given.
@@ -659,14 +669,13 @@ export default class App extends React.Component {
                     unreadItemsOfflineCount={this.state.unreadItemsOfflineCount}
                     starredItemsCount={this.state.starredItemsCount}
                     starredItemsOfflineCount={this.state.starredItemsOfflineCount}
-                    loginFormError={this.state.loginFormError}
-                    setLoginFormError={this.setLoginFormError}
                     globalMessage={this.state.globalMessage}
                     sourcesState={this.state.sourcesState}
                     setSourcesState={this.setSourcesState}
                     sources={this.state.sources}
                     setSources={this.setSources}
                     tags={this.state.tags}
+                    reloadAll={this.reloadAll}
                 />
             </LocalizationContext.Provider>
         );
@@ -677,9 +686,9 @@ export default class App extends React.Component {
  * Creates the selfoss single-page application
  * with the required contexts.
  */
-export function createApp(appRef) {
+export function createApp(basePath, appRef) {
     return (
-        <Router hashType="noslash">
+        <Router basename={basePath}>
             <App ref={appRef} />
         </Router>
     );

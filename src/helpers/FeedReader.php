@@ -2,7 +2,7 @@
 
 namespace helpers;
 
-use SimplePie;
+use SimplePie\SimplePie;
 
 /**
  * Helper class for obtaining feeds
@@ -39,7 +39,7 @@ class FeedReader {
      *
      * @param string $url URL of the feed
      *
-     * @return array
+     * @return array{items: \SimplePie_Item[], htmlUrl: string, title: ?string}
      */
     public function load($url) {
         @$this->simplepie->set_feed_url($url);
@@ -61,8 +61,8 @@ class FeedReader {
         return [
             // save fetched items
             'items' => $this->simplepie->get_items(),
-            'htmlUrl' => htmlspecialchars_decode($this->simplepie->get_link(), ENT_COMPAT), // SimplePie sanitizes URLs
-            'spoutTitle' => $this->simplepie->get_title(),
+            'htmlUrl' => htmlspecialchars_decode((string) $this->simplepie->get_link(), ENT_COMPAT), // SimplePie sanitizes URLs
+            'title' => $this->simplepie->get_title(),
         ];
     }
 
@@ -72,7 +72,9 @@ class FeedReader {
      * @return ?string
      */
     public function getImageUrl() {
-        return htmlspecialchars_decode($this->simplepie->get_image_url(), ENT_COMPAT); // SimplePie sanitizes URLs
+        $raw = $this->simplepie->get_image_url();
+
+        return $raw === null ? $raw : htmlspecialchars_decode($raw, ENT_COMPAT); // SimplePie sanitizes URLs
     }
 
     /**

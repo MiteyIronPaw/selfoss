@@ -1,10 +1,10 @@
 import React from 'react';
 import PropTypes from 'prop-types';
-import { Link, useLocation, useRouteMatch } from 'react-router-dom';
-import { usePrevious } from 'rooks';
+import { Link, useRouteMatch } from 'react-router-dom';
+import { usePreviousImmediate } from 'rooks';
 import classNames from 'classnames';
 import { unescape } from 'html-escaper';
-import { makeEntriesLink, ENTRIES_ROUTE_PATTERN } from '../helpers/uri';
+import { forceReload, makeEntriesLinkLocation, ENTRIES_ROUTE_PATTERN } from '../helpers/uri';
 import Collapse from '@kunukn/react-collapse';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { LoadingState } from '../requests/LoadingState';
@@ -13,7 +13,8 @@ import * as icons from '../icons';
 import { LocalizationContext } from '../helpers/i18n';
 
 function handleTitleClick({ setExpanded, sourcesState, setSourcesState, setSources }) {
-    if (!selfoss.db.online) {
+    if (!selfoss.isOnline()) {
+        console.log('Cannot toggle, not online.');
         return;
     }
 
@@ -33,13 +34,20 @@ function handleTitleClick({ setExpanded, sourcesState, setSourcesState, setSourc
 }
 
 function Source({ source, active, collapseNav }) {
-    const location = useLocation();
+    const link = React.useCallback(
+        (location) => ({
+            ...location,
+            ...makeEntriesLinkLocation(location, { category: `source-${source.id}`, id: null }),
+            state: forceReload(location),
+        }),
+        [source.id]
+    );
 
     return (
         <li
             className={classNames({ read: source.unread === 0 })}
         >
-            <Link to={makeEntriesLink(location, { category: `source-${source.id}`, id: null })} className={classNames({active, unread: source.unread > 0})} onClick={collapseNav}>
+            <Link to={link} className={classNames({active, unread: source.unread > 0})} onClick={collapseNav}>
                 <span className="nav-source">{unescape(source.title)}</span>
                 <span className="unread">{source.unread > 0 ? source.unread : ''}</span>
             </Link>
@@ -79,7 +87,7 @@ export default function NavSources({
         [setNavExpanded]
     );
 
-    const previousSourcesState = usePrevious(sourcesState);
+    const previousSourcesState = usePreviousImmediate(sourcesState);
     React.useEffect(() => {
         if (previousSourcesState === LoadingState.INITIAL && sourcesState === LoadingState.SUCCESS) {
             setNavSourcesExpanded(true);

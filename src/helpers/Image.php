@@ -24,7 +24,7 @@ class Image {
         self::FORMAT_PNG => 'png',
     ];
 
-    private static $imageTypes = [
+    const IMAGE_TYPES = [
         // IANA assigned type
         'image/bmp' => 'bmp',
         'image/gif' => 'gif',
@@ -41,13 +41,6 @@ class Image {
         'image/icon' => 'ico',
         'text/ico' => 'ico',
         'application/ico' => 'ico',
-    ];
-
-    private static $iconRelWeights = [
-        'apple-touch-icon-precomposed' => 3,
-        'apple-touch-icon' => 2,
-        'shortcut icon' => 1,
-        'icon' => 1,
     ];
 
     /** @var Logger */
@@ -190,8 +183,10 @@ class Image {
         }
 
         $mimeType = isset($imgInfo['mime']) ? strtolower($imgInfo['mime']) : null;
-        if ($mimeType !== null && isset(self::$imageTypes[$mimeType])) {
-            $type = self::$imageTypes[$mimeType];
+        // Workaround for PHP 5.6, which does not allow isset on array access to array constants.
+        $types = self::IMAGE_TYPES;
+        if ($mimeType !== null && isset($types[$mimeType])) {
+            $type = self::IMAGE_TYPES[$mimeType];
         } else {
             return null;
         }
@@ -211,7 +206,7 @@ class Image {
             } else {
                 $image->setImageFormat('png24');
                 $image->setImageCompression(\Imagick::COMPRESSION_UNDEFINED);
-                $image->setOption('png:compression-level', 9);
+                $image->setOption('png:compression-level', '9');
             }
 
             return new ImageHolder((string) $image, $format, $image->getImageWidth(), $image->getImageHeight());

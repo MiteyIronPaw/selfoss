@@ -3,6 +3,7 @@
 namespace spouts\github;
 
 use helpers\WebClient;
+use spouts\Item;
 
 /**
  * Spout for fetching from GitHub
@@ -13,8 +14,6 @@ use helpers\WebClient;
  * @author     Tim Gerundt <tim@gerundt.de>
  */
 class commits extends \spouts\spout {
-    use \helpers\ItemsIterator;
-
     /** @var string name of source */
     public $name = 'GitHub: commits';
 
@@ -46,6 +45,9 @@ class commits extends \spouts\spout {
         ],
     ];
 
+    /** @var ?string title of the source */
+    protected $title = null;
+
     /** @var string global html url for the source */
     protected $htmlUrl = '';
 
@@ -54,6 +56,9 @@ class commits extends \spouts\spout {
 
     /** @var WebClient */
     private $webClient;
+
+    /** @var array[] current fetched items */
+    private $items = [];
 
     public function __construct(WebClient $webClient) {
         $this->webClient = $webClient;
@@ -66,73 +71,62 @@ class commits extends \spouts\spout {
     public function load(array $params) {
         $this->htmlUrl = 'https://github.com/' . urlencode($params['owner']) . '/' . urlencode($params['repo']) . '/' . urlencode($params['branch']);
 
+        // https://docs.github.com/en/rest/commits/commits#list-commits
         $jsonUrl = 'https://api.github.com/repos/' . urlencode($params['owner']) . '/' . urlencode($params['repo']) . '/commits?sha=' . urlencode($params['branch']);
 
         $http = $this->webClient->getHttpClient();
         $response = $http->get($jsonUrl);
-        $this->items = json_decode((string) $response->getBody(), true);
+        $items = json_decode((string) $response->getBody(), true);
+        $this->items = $items === null ? [] : $items;
 
-        $this->spoutTitle = "Recent Commits to {$params['repo']}:{$params['branch']}";
+        $this->title = "Recent Commits to {$params['repo']}:{$params['branch']}";
+    }
+
+    public function getTitle() {
+        return $this->title;
     }
 
     public function getHtmlUrl() {
         return $this->htmlUrl;
     }
 
-    public function getId() {
-        if ($this->items !== null && $this->valid()) {
-            return @current($this->items)['sha'];
-        }
-
-        return null;
-    }
-
-    public function getTitle() {
-        if ($this->items !== null && $this->valid()) {
-            $message = @current($this->items)['commit']['message'];
-
-            return htmlspecialchars(self::cutTitle($message));
-        }
-
-        return null;
-    }
-
-    public function getContent() {
-        if ($this->items !== null && $this->valid()) {
-            $message = @current($this->items)['commit']['message'];
-
-            return nl2br(htmlspecialchars($message), false);
-        }
-
-        return null;
-    }
-
     public function getIcon() {
         return $this->faviconUrl;
     }
 
-    public function getLink() {
-        if ($this->items !== null && $this->valid()) {
-            return @current($this->items)['html_url'];
-        }
+    /**
+     * @return \Generator<Item<null>> list of items
+     */
+    public function getItems() {
+        foreach ($this->items as $item) {
+            $message = $item['commit']['message'];
 
-        return null;
-    }
+            $id = $item['sha'];
+            $title = htmlspecialchars(self::cutTitle($message));
+            $content = nl2br(htmlspecialchars($message), false);
+            $thumbnail = null;
+            $icon = null;
+            $link = $item['html_url'];
+            // Appears to be ISO 8601.
+            $date = new \DateTimeImmutable($item['commit']['author']['date']);
+            $author = null;
 
-    public function getDate() {
-        if ($this->items !== null && $this->valid()) {
-            $date = date('Y-m-d H:i:s', strtotime(@current($this->items)['commit']['author']['date']));
+            yield new Item(
+                $id,
+                $title,
+                $content,
+                $thumbnail,
+                $icon,
+                $link,
+                $date,
+                $author
+            );
         }
-        if (strlen($date) === 0) {
-            $date = date('Y-m-d H:i:s');
-        }
-
-        return $date;
     }
 
     public function destroy() {
         unset($this->items);
-        $this->items = null;
+        $this->items = [];
     }
 
     /**

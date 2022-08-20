@@ -6,15 +6,30 @@ namespace daos;
  * Interface describing database backend.
  */
 interface DatabaseInterface {
+    const PARAM_INT = 1;
+    const PARAM_BOOL = 2;
+    const PARAM_CSV = 3;
+    const PARAM_DATETIME = 4;
+
     /**
-     * Execute SQL statement(s)
+     * Execute SQL statement.
      *
-     * @param string|string[] $cmds
-     * @param string|array $args
+     * @param string $cmd
+     * @param array|scalar $args
      *
-     * @return array|int|false
+     * @return \PDOStatement
      */
-    public function exec($cmds, $args = null);
+    public function execute($cmd, $args = []);
+
+    /**
+     * Execute SQL statement and fetch the result as an associative array (when applicable).
+     *
+     * @param string $cmd
+     * @param array|scalar $args
+     *
+     * @return ?array
+     **/
+    public function exec($cmd, $args = []);
 
     /**
      * wrap insert statement to return id
@@ -41,14 +56,14 @@ interface DatabaseInterface {
      *
      * @return bool
      */
-    public function begin();
+    public function beginTransaction();
 
     /**
      * Rollback SQL transaction
      *
      * @return bool
      */
-    public function rollback();
+    public function rollBack();
 
     /**
      * Commit SQL transaction
@@ -63,4 +78,11 @@ interface DatabaseInterface {
      * @return void
      */
     public function optimize();
+
+    /**
+     * Get the current version database schema.
+     *
+     * @return int
+     */
+    public function getSchemaVersion();
 }

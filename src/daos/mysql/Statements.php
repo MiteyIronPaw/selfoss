@@ -2,6 +2,8 @@
 
 namespace daos\mysql;
 
+use daos\DatabaseInterface;
+
 /**
  * MySQL specific statements
  *
@@ -14,7 +16,7 @@ class Statements implements \daos\StatementsInterface {
      * null first for order by clause
      *
      * @param string $column column to concat
-     * @param string $order
+     * @param 'DESC'|'ASC' $order
      *
      * @return string full statement
      */
@@ -86,7 +88,7 @@ class Statements implements \daos\StatementsInterface {
      * check column against int list.
      *
      * @param string $column column to check
-     * @param int[] $ints of string or int values to match column against
+     * @param int[] $ints list of ints to match column against
      *
      * @return ?string full statement
      */
@@ -95,21 +97,10 @@ class Statements implements \daos\StatementsInterface {
         if (count($ints) === 0) {
             return null;
         }
-        $all_ints = [];
-        foreach ($ints as $ints_str) {
-            $i = (int) $ints_str;
-            if ($i > 0) {
-                $all_ints[] = $i;
-            }
-        }
 
-        if (count($all_ints) > 0) {
-            $comma_ints = implode(',', $all_ints);
+        $comma_ints = implode(',', $ints);
 
-            return $column . " IN ($comma_ints)";
-        }
-
-        return null;
+        return $column . " IN ($comma_ints)";
     }
 
     /**
@@ -163,24 +154,25 @@ class Statements implements \daos\StatementsInterface {
             foreach ($expectedRowTypes as $columnIndex => $type) {
                 if (array_key_exists($columnIndex, $row)) {
                     switch ($type) {
-                        case \daos\PARAM_INT:
+                        case DatabaseInterface::PARAM_INT:
                             $value = (int) $row[$columnIndex];
                             break;
-                        case \daos\PARAM_BOOL:
-                            if ($row[$columnIndex] === '1') {
+                        case DatabaseInterface::PARAM_BOOL:
+                            // PDO returns integer in PHP ≥ 8.1.
+                            if ($row[$columnIndex] === 1 || $row[$columnIndex] === '1') {
                                 $value = true;
                             } else {
                                 $value = false;
                             }
                             break;
-                        case \daos\PARAM_CSV:
+                        case DatabaseInterface::PARAM_CSV:
                             if ($row[$columnIndex] === '') {
                                 $value = [];
                             } else {
                                 $value = explode(',', $row[$columnIndex]);
                             }
                             break;
-                        case \daos\PARAM_DATETIME:
+                        case DatabaseInterface::PARAM_DATETIME:
                             if (empty($row[$columnIndex])) {
                                 $value = null;
                             } else {

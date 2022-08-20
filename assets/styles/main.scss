@@ -1,8 +1,28 @@
-@import '@fancyapps/fancybox/dist/jquery.fancybox.css';
-@import 'spectrum-colorpicker/spectrum.css';
-@import 'reset-css/sass/_reset.scss';
+@use 'sass:color';
+
+@import 'npm:@fancyapps/fancybox/dist/jquery.fancybox.css';
+@import 'npm:reset-css/sass/reset';
+@import 'mixins/visually-hidden';
 
 /* base */
+
+$primary: #3d6d69;
+$primary-highlight: color.adjust($primary, $lightness: 15%);
+$primary-highlight-shadow: rgba($primary-highlight, $alpha: 0.4);
+$text-color: black;
+
+:root {
+    // Sass does not interportate code in CSS variable definitions unless explicitly unescaped.
+    // https://github.com/sass/libsass/issues/2621
+    --primary: #{$primary};
+    --primary-contrast: #ffffff;
+    --primary-highlight: #{$primary-highlight};
+    --primary-highlight-shadow: #{$primary-highlight-shadow};
+    --text-color: #{$text-color};
+    --background-color: white;
+}
+
+@import 'color-chooser';
 
 html,
 body {
@@ -11,23 +31,44 @@ body {
 
 body {
     font: lighter 18px/27px 'Open Sans', Arial, sans-serif;
-    color: black;
-    background: url(../images/bg.gif) repeat;
+    color: var(--text-color);
+    background: url('../images/bg.gif') repeat;
+}
+
+button {
+    font-family: 'Open Sans', Arial, sans-serif;
 }
 
 select,
 input {
     border: solid 1px #cccccc;
+    background: var(--background-color);
+    color: var(--text-color);
     border-radius: 2px;
     padding: 6px;
+    margin: 0.2rem;
 }
 
-button:focus {
-    outline: 1px dotted currentColor;
+select:focus,
+input:focus {
+    color: color.mix($text-color, $primary, 50%);
+    border-color: var(--primary);
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem var(--primary-highlight-shadow);
+}
+
+:focus-visible {
+    outline: var(--primary) solid 2px;
 }
 
 button::-moz-focus-inner {
     border: 0;
+}
+
+@import 'popup-menu';
+
+.visually-hidden {
+    @include visually-hidden;
 }
 
 #js-loading-message {
@@ -59,7 +100,7 @@ button::-moz-focus-inner {
     cursor: pointer;
     background: #cccccc;
     border: 0;
-    color: currentColor;
+    color: currentcolor;
     padding: 0;
 }
 
@@ -73,7 +114,7 @@ button::-moz-focus-inner {
 
 #nav {
     background: #191718;
-    border-right: 5px solid #3d6d69;
+    border-right: 5px solid var(--primary);
     z-index: 10;
     overflow-x: hidden;
 }
@@ -93,7 +134,7 @@ button::-moz-focus-inner {
 #nav-logo {
     margin-left: 20px;
     margin-top: 14px;
-    background: url(../images/logo.png);
+    background: url('../images/logo.png');
     flex-shrink: 0;
     width: 31px;
     height: 37px;
@@ -106,11 +147,15 @@ button::-moz-focus-inner {
     margin-left: 15px;
     margin-right: 15px;
     color: #d7d7d7;
-    background: #3d6d69;
+    background: var(--primary);
     font-size: 0.9em;
     text-align: center;
     border-radius: 2px;
     cursor: pointer;
+}
+
+#nav-mark:focus-visible {
+    outline-color: var(--primary-contrast);
 }
 
 #nav-mark[disabled],
@@ -170,7 +215,7 @@ button::-moz-focus-inner {
     border-radius: 30px;
     color: white !important;
     font-size: 0.6em !important;
-    padding: 0 5px 0 5px;
+    padding: 0 5px;
     margin-left: 5px;
     vertical-align: baseline !important;
     display: inline !important;
@@ -232,6 +277,23 @@ span.offline-count.diff {
     scrollbar-width: thin;
     scrollbar-color: dark;
     flex-grow: 1;
+
+    &::-webkit-scrollbar {
+        width: 10px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+        background: #727173;
+        border-radius: 5px;
+    }
+
+    &::-webkit-scrollbar-thumb:hover {
+        background: #5f5e60;
+    }
+
+    &::-webkit-scrollbar-thumb:active {
+        background: var(--primary-highlight);
+    }
 }
 
 .nav-ts-wrapper.offline {
@@ -275,11 +337,18 @@ span.offline-count.diff {
 }
 
 #nav-tags .color {
-    width: 10px;
-    height: 10px;
-    border-radius: 2px;
+    width: 2em;
+    height: 2em;
     margin-left: auto;
     flex-shrink: 0; /* preserve aspect ratio */
+}
+
+.color-box {
+    width: 1em;
+    height: 1em;
+    border-radius: 2px;
+    margin: auto;
+    display: block;
 }
 
 #nav-sources li a,
@@ -332,16 +401,19 @@ span.offline-count.diff {
     margin-top: auto;
 }
 
-.nav-toolbar button {
+.nav-toolbar button,
+.nav-toolbar a {
     font-size: 1.2rem;
     background: #272325;
     border-radius: 2px;
     border: none;
     color: #484447;
     cursor: pointer;
-    display: inline-block;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     flex-grow: 1;
-    height: 3em;
+    height: 2.5em;
     margin: 0.25em;
     padding: 0;
 }
@@ -373,8 +445,8 @@ span.offline-count.diff {
     padding-left: 5px;
     padding-right: 8px;
     font-size: 0.85em;
-    background-color: #3d6d69;
-    border-right: 6px solid #3d6d69;
+    background-color: var(--primary);
+    border-right: 6px solid var(--primary);
     border-top-right-radius: 4px;
     border-bottom-right-radius: 4px;
     cursor: pointer;
@@ -402,11 +474,11 @@ span.offline-count.diff {
     margin: 1px 50px 3px 5px;
     padding: 5px;
     border-radius: 4px;
-    background: rgba(255, 255, 255, 0.4);
+    background: rgb(255 255 255 / 40%);
     position: relative;
     font-weight: normal;
     font-size: 0.9em;
-    border: 1px solid rgba(255, 255, 255, 0);
+    border: 1px solid rgb(255 255 255 / 0%);
 }
 
 .entry.selected.unread,
@@ -421,7 +493,7 @@ span.offline-count.diff {
 
 .entry .found {
     color: #ffffff;
-    background: rgba(61, 109, 105, 0.4);
+    background: rgb(61 109 105 / 40%);
 }
 
 .entry-icon,
@@ -446,7 +518,7 @@ span.offline-count.diff {
 }
 
 .entry-title a {
-    color: #3d6d69;
+    color: var(--primary);
 }
 
 .entry.unread .entry-title {
@@ -459,6 +531,10 @@ span.offline-count.diff {
     font-size: 0.8em;
     white-space: nowrap;
     text-decoration: none;
+}
+
+.entry-tags-tag:focus-visible {
+    outline-offset: 1px;
 }
 
 .entry-thumbnail img {
@@ -479,7 +555,7 @@ span.offline-count.diff {
 .entry-content {
     column-count: 3;
     column-gap: 2em;
-    column-rule: 1px solid rgba(204, 204, 204, 0.4);
+    column-rule: 1px solid rgb(204 204 204 / 40%);
     font-size: 0.95em;
     margin-top: 20px;
     line-height: 1.7em;
@@ -487,11 +563,11 @@ span.offline-count.diff {
     padding: 0 1em;
     overflow-wrap: break-word;
 
-    @import 'unreset-css/_unreset.scss';
+    @import 'unreset-css/unreset';
 }
 
 .entry-content a {
-    color: #3d6d69;
+    color: var(--primary);
 }
 
 .entry-content img {
@@ -591,7 +667,7 @@ span.offline-count.diff {
 .entry-toolbar button,
 .entry-toolbar a {
     background-color: transparent;
-    color: black;
+    color: var(--text-color);
     text-decoration: none;
     font-size: 0.91rem;
     border: none;
@@ -625,7 +701,7 @@ span.offline-count.diff {
     border: none;
     padding: 0;
     background: transparent;
-    color: black;
+    color: var(--text-color);
     width: 100%;
 }
 
@@ -667,7 +743,7 @@ span.offline-count.diff {
 }
 
 .source-showparams,
-.source-delete,
+.source-menu-button,
 .source-save,
 .source-cancel {
     padding: 0;
@@ -698,12 +774,6 @@ span.offline-count.diff {
     font-size: 0.75em;
 }
 
-.source-edit-delete.loadi1ng,
-.source-action.loading {
-    background: url(../images/ajax-loader.gif) right center no-repeat;
-    padding-right: 25px;
-}
-
 .source-showparams.saved {
     color: #0000ff;
 }
@@ -721,28 +791,32 @@ span.offline-count.diff {
 
 .source-add,
 .source-export,
-.refresh-source {
+.refresh-source,
+.entries-go-to-settings {
     font-size: 0.85em;
     line-height: 2;
+    text-decoration: none;
 }
 
 .source-add {
     background: transparent;
     border: none;
-    color: black;
+    color: var(--text-color);
     padding: 0;
     cursor: pointer;
     margin-left: 20px;
     float: left;
 }
 
-.refresh-source {
+.refresh-source,
+.entries-go-to-settings {
     background: transparent;
     border: none;
-    color: black;
+    color: var(--text-color);
     padding: 0;
     cursor: pointer;
     margin-left: 20px;
+    font-weight: normal;
 }
 
 .source-export {
@@ -791,7 +865,7 @@ span.offline-count.diff {
 }
 
 #login h1 {
-    background: url(../images/logo.png) left center no-repeat;
+    background: url('../images/logo.png') left center no-repeat;
     font-weight: 600;
     padding-top: 10px;
     padding-left: 40px;
@@ -850,7 +924,7 @@ span.offline-count.diff {
 }
 
 #opml h1 {
-    background: url(../images/logo.png) left center no-repeat;
+    background: url('../images/logo.png') left center no-repeat;
     font-family: 'Open Sans', Arial, sans-serif;
     font-weight: 600; /* semi-bold */
     padding-top: 10px;
@@ -897,17 +971,6 @@ span.offline-count.diff {
 
 /* public mode */
 
-#nav-login,
-body.publicmode.authenabled.loggedin #nav-login,
-#nav-logout,
-body:not(.loggedin) #nav-mark,
-body:not(.loggedin) #nav-settings,
-body:not(.loggedin) .entry-starr,
-body:not(.loggedin):not(.publicupdate) #nav-refresh,
-body:not(.loggedin) .entry-unread {
-    display: none;
-}
-
 #search.offline {
     display: none;
 }
@@ -916,18 +979,14 @@ body:not(.loggedin) .entry-unread {
 
 /* only desktop */
 @media screen and (min-width: 1024px) {
-    body.publicmode:not(.loggedin) .entry-toolbar {
-        display: none;
-    }
-
     #search {
-        left: calc(108px - 20rem + 0.5em + 30px);
+        left: calc(100px - 20rem + 0.5rem + 0.2rem + 30px);
         top: 25px;
-        clip-path: inset(0 0 0 357px);
+        clip-path: inset(0 0 0 364px);
     }
 
     #search.active {
-        left: 185px;
+        left: 180px;
         clip-path: inset(0);
     }
 }
@@ -951,11 +1010,6 @@ body:not(.loggedin) .entry-unread {
         display: none;
     }
 
-    body.publicmode.authenabled #nav-login,
-    body.authenabled.loggedin #nav-logout {
-        display: inline-block;
-    }
-
     /* search */
 
     .search-button-label {
@@ -977,7 +1031,7 @@ body:not(.loggedin) .entry-unread {
         z-index: 9;
         position: fixed;
         padding: 5px;
-        background: rgba(61, 109, 105, 0.4);
+        background: rgb(61 109 105 / 40%);
         border-top-right-radius: 4px;
         border-bottom-right-radius: 4px;
         transition-property: left, clip-path;
@@ -987,7 +1041,6 @@ body:not(.loggedin) .entry-unread {
 
     #search-term {
         width: 20rem;
-        margin-left: 0.5em;
     }
 
     #search hr {
@@ -998,7 +1051,7 @@ body:not(.loggedin) .entry-unread {
 /* ipad */
 @media screen and (min-width: 641px) and (max-width: 1024px) {
     #search {
-        width: calc(20rem + 0.5em + 30px);
+        width: calc(20rem + 0.5rem + 0.2rem + 30px);
         top: -46px;
         right: 65px;
         transition: top 0.5s ease-in-out;
@@ -1014,8 +1067,8 @@ body:not(.loggedin) .entry-unread {
         position: absolute;
         bottom: -30px;
         left: 100%;
-        margin-left: -50px;
-        background-color: rgba(61, 109, 105, 0.4);
+        margin-left: -2.4rem;
+        background-color: rgb(61 109 105 / 40%);
         border-bottom-left-radius: 4px;
         border-bottom-right-radius: 4px;
     }
@@ -1028,10 +1081,8 @@ body:not(.loggedin) .entry-unread {
         margin: 0;
         padding: 7px;
         border-radius: 0;
-
-        /* border-top:1px solid #ccc; */
         border: 0;
-        background: url(../images/entry-bg.png) bottom repeat-x #ffffff;
+        border-bottom: 1px solid #e0e3e5;
     }
 
     .source-showparams,
@@ -1055,9 +1106,9 @@ body:not(.loggedin) .entry-unread {
         padding-right: 15px;
     }
 
-    #nav-tags .color {
-        width: 25px;
-        height: 25px;
+    .color-box {
+        width: 2em;
+        height: 2em;
     }
 
     #search-list {
@@ -1120,7 +1171,7 @@ body:not(.loggedin) .entry-unread {
         position: relative;
         display: block;
         background: #191718;
-        border-bottom: 3px solid #3d6d69;
+        border-bottom: 3px solid var(--primary);
         width: 100%;
         height: 50px;
     }
@@ -1132,7 +1183,7 @@ body:not(.loggedin) .entry-unread {
         left: 50%;
         top: 5px;
         margin-left: -48px;
-        background: url(../images/nav-mobile-logo.png) no-repeat;
+        background: url('../images/nav-mobile-logo.png') no-repeat;
         background-size: 96px 40px;
     }
 
@@ -1165,7 +1216,7 @@ body:not(.loggedin) .entry-unread {
         border: 0;
         overflow: hidden;
         clear: both;
-        border-bottom: 3px solid #3d6d69;
+        border-bottom: 3px solid var(--primary);
     }
 
     #nav-mark {
@@ -1207,11 +1258,6 @@ body:not(.loggedin) .entry-unread {
         margin: 0.25em 0.5em;
     }
 
-    body.publicmode.authenabled #nav-login,
-    body.authenabled.loggedin #nav-logout {
-        display: inline-block;
-    }
-
     #search-list {
         margin-left: 10px;
     }
@@ -1240,7 +1286,7 @@ body:not(.loggedin) .entry-unread {
     .entry-source,
     .entry-separator,
     .entry-datetime {
-        color: #3d6d69;
+        color: var(--primary);
     }
 
     .source-showparams,
@@ -1278,7 +1324,7 @@ body:not(.loggedin) .entry-unread {
         width: 100%;
         height: 100%;
         overflow: auto;
-        background: #ffffff;
+        background: var(--background-color);
         z-index: 200;
     }
 

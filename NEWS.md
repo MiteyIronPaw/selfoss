@@ -13,9 +13,15 @@
 - Data directory can be configured ([#1043](https://github.com/fossar/selfoss/pull/1043))
 - New spout for searching Twitter (e.g. following hashtags) was added. ([#1213](https://github.com/fossar/selfoss/pull/1213))
 - Added option `reading_speed_wpm` for showing estimated reading time. ([#1232](https://github.com/fossar/selfoss/pull/1232))
+- Added option `db_socket` for connecting to MySQL database through UNIX domain. ([#1284](https://github.com/fossar/selfoss/pull/1284))
 - Search query is now part of URL. ([#1216](https://github.com/fossar/selfoss/pull/1216))
+- A page that will pre-fill a form for adding a source with URL has been added. You can find it on `https://yourselfossurl.com/manage/sources/add?url=some-feed-url`. ([#1310](https://github.com/fossar/selfoss/pull/1310), [#254](https://github.com/fossar/selfoss/issues/254))
 - Search will be carried out using regular expressions when the search query is wrapped in forward slashes, e.g. `/regex/`. The expression syntax is database specific. ([#1205](https://github.com/fossar/selfoss/pull/1205))
 - YouTube spout now supports following playlists. ([#1260](https://github.com/fossar/selfoss/pull/1260))
+- Confirmation is now required when leaving the setting page with unsaved source changes. ([#1300](https://github.com/fossar/selfoss/pull/1300))
+- Add link from settings page to individual sources and vice versa. ([#1329](https://github.com/fossar/selfoss/pull/1329), [#1340](https://github.com/fossar/selfoss/pull/1340))
+- Tag colour can be now changed using keyboard. ([#1335](https://github.com/fossar/selfoss/pull/1335))
+- YouTube spout now supports all YouTube URLs that provide feeds. ([#1273](https://github.com/fossar/selfoss/issues/1273))
 - Translations into several new languages were added:
   - English (United Kingdom): `en-GB`
   - French (Canada): `fr-CA`
@@ -25,11 +31,11 @@
 
 ### Bug fixes
 - Reddit spout allows wider range of URLs, including absolute URLs and searches ([#1033](https://github.com/fossar/selfoss/pull/1033))
-- Improved compatibility with PHP 7.2 ([#1049](https://github.com/fossar/selfoss/issues/1049))
+- Improved compatibility with newer versions of PHP ([#1049](https://github.com/fossar/selfoss/issues/1049), [#1157](https://github.com/fossar/selfoss/issues/1157), [#1236](https://github.com/fossar/selfoss/issues/1236), [#1294](https://github.com/fossar/selfoss/issues/1294))
 - `logger_level=NONE` is now handled correctly ([#1077](https://github.com/fossar/selfoss/issues/1077))
 - URLs containing special characters like commas in query string are now handled correctly ([#1082](https://github.com/fossar/selfoss/pull/1082))
 - Set 60 second timeout to spout HTTP requests to prevent a single feed blocking other updates ([#1104](https://github.com/fossar/selfoss/issues/1104))
-- Significantly improved accessibility ([#1133](https://github.com/fossar/selfoss/pull/1133), [#1134](https://github.com/SSilence/selfoss/pull/1134) and [#1141](https://github.com/SSilence/selfoss/pull/1141))
+- Significantly improved accessibility ([#1133](https://github.com/fossar/selfoss/pull/1133), [#1134](https://github.com/SSilence/selfoss/pull/1134), [#1141](https://github.com/SSilence/selfoss/pull/1141) and [#1345](https://github.com/SSilence/selfoss/pull/1345))
 - Fixed marking more than 1000 items as read at the same time ([#1182](https://github.com/fossar/selfoss/issues/1182))
 - Fixed loading full text on pages containing ampersands in URLs ([#1188](https://github.com/fossar/selfoss/pull/1188))
 - Fixed missing styling in article contents ([#1221](https://github.com/fossar/selfoss/pull/1221))
@@ -79,9 +85,12 @@
   * Swedish `sv`
 - Wallabag sharer now targets Wallabag 2 by default. This is potentially breaking change but hopefully, no one uses Wallabag 1 any more. ([#1261](https://github.com/fossar/selfoss/pull/1261))
 - `defaults.ini` file is no longer used, it is only provided for convenience under a new name `config-example.ini` ([#1261](https://github.com/fossar/selfoss/pull/1261), [#1267](https://github.com/fossar/selfoss/pull/1267))
+- `spout` classes no longer need to implement `Iterator`, instead they should return `Iterator` of newly introduced `Item` objects from `getItems()` method. The types of properties of items have also been revisited. ([#1341](https://github.com/fossar/selfoss/pull/1341), [#1342](https://github.com/fossar/selfoss/pull/1342))
 
 ### Other changes
 - The front-end has been modernized using React framework, this will greatly simplify future development. ([#1216](https://github.com/fossar/selfoss/pull/1216))
+- The front-end routing no longer relies on hash fragment, resulting in nicer URLs. ([#1299](https://github.com/fossar/selfoss/pull/1299))
+- Prevent sending referrer headers when opening links and sharing for improved privacy. ([#1301](https://github.com/fossar/selfoss/pull/1301))
 - Removed broken instapaper scraping from Reddit spout ([#1033](https://github.com/fossar/selfoss/pull/1033))
 - RSS feed will be fetched more reliably ([#1052](https://github.com/fossar/selfoss/pull/1052))
 - Guzzle is now used for Twitter as well, allowing users to [install certificates](https://github.com/fossar/selfoss/issues/1099#issuecomment-477112598) on outdated hosts easily. ([#1102](https://github.com/SSilence/selfoss/pull/1102))

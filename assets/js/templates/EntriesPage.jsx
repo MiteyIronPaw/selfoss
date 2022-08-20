@@ -1,6 +1,7 @@
 import React from 'react';
 import PropTypes from 'prop-types';
-import { useRouteMatch, useLocation } from 'react-router-dom';
+import { Link, useLocation, useParams } from 'react-router-dom';
+import { useOnline } from 'rooks';
 import { useStateWithDeps } from 'use-state-with-deps';
 import nullable from 'prop-types-nullable';
 import Item from './Item';
@@ -10,7 +11,10 @@ import * as sourceRequests from '../requests/sources';
 import { LoadingState } from '../requests/LoadingState';
 import { Spinner, SpinnerBig } from './Spinner';
 import classNames from 'classnames';
+import { useAllowedToUpdate, useAllowedToWrite } from '../helpers/authorizations';
 import { LocalizationContext } from '../helpers/i18n';
+import { useShouldReload } from '../helpers/hooks';
+import { forceReload } from '../helpers/uri';
 import { HttpError } from '../errors';
 
 function reloadList({ fetchParams, abortController, append = false, waitForSync = true, entryId = null, setLoadingState }) {
@@ -44,7 +48,7 @@ function reloadList({ fetchParams, abortController, append = false, waitForSync 
         }
 
         var forceLoadOnline = selfoss.dbOffline.olderEntriesOnline || selfoss.dbOffline.shouldLoadEntriesOnline;
-        if (!selfoss.db.enableOffline.value || (selfoss.db.online && forceLoadOnline)) {
+        if (!selfoss.db.enableOffline.value || (selfoss.isOnline() && forceLoadOnline)) {
             reloader = selfoss.dbOnline.getEntries;
         }
 
@@ -100,9 +104,9 @@ function reloadList({ fetchParams, abortController, append = false, waitForSync 
             }
 
             if (error instanceof HttpError && error.response.status === 403) {
-                selfoss.history.push('/login');
-                // TODO: Use location state once we switch to BrowserRouter
-                selfoss.app.setLoginFormError(selfoss.app._('error_session_expired'));
+                selfoss.history.push('/sign/in', {
+                    error: selfoss.app._('error_session_expired')
+                });
                 return;
             }
 
@@ -139,16 +143,18 @@ function handleRefreshSource({ event, source, setLoadingState, setNavExpanded, r
 }
 
 export function EntriesPage({ entries, hasMore, loadingState, setLoadingState, selectedEntry, expandedEntries, setNavExpanded, navSourcesExpanded, reload }) {
-    const allowedToUpdate = !selfoss.config.authEnabled || selfoss.config.allowPublicUpdate || selfoss.loggedin.value;
+    const allowedToUpdate = useAllowedToUpdate();
+    const allowedToWrite = useAllowedToWrite();
 
     const location = useLocation();
+    const forceReload = useShouldReload();
     const searchText = React.useMemo(() => {
         const queryString = new URLSearchParams(location.search);
 
         return queryString.get('search') ?? '';
     }, [location.search]);
 
-    const { params } = useRouteMatch();
+    const params = useParams();
     const currentTag = params.category?.startsWith('tag-') ? params.category.replace(/^tag-/, '') : null;
     const currentSource = params.category?.startsWith('source-') ? parseInt(params.category.replace(/^source-/, ''), 10) : null;
 
@@ -167,8 +173,8 @@ export function EntriesPage({ entries, hasMore, loadingState, setLoadingState, s
     // but do not re-fetch when the id in the URI changes later
     // since that happens when reading.
     const initialItemId = React.useMemo(() => {
-        return params.id;
-    }, [params.filter, currentTag, currentSource, searchText]);
+        return parseInt(params.id, 10);
+    }, [params.filter, currentTag, currentSource, searchText, forceReload]);
     // Same for the state of navigation being expanded.
     // It is only passed to the API request as a part of optimization scheme
     // so there is no need for it to trigger refresh of the entries.
@@ -214,7 +220,7 @@ export function EntriesPage({ entries, hasMore, loadingState, setLoadingState, s
         return () => {
             abortController.abort();
         };
-    }, [params.filter, currentTag, currentSource, initialNavSourcesExpanded, searchText, fromDatetime, fromId, initialItemId, setLoadingState]);
+    }, [params.filter, currentTag, currentSource, initialNavSourcesExpanded, searchText, fromDatetime, fromId, initialItemId, setLoadingState, forceReload]);
 
     React.useEffect(() => {
         // scroll load more
@@ -241,8 +247,16 @@ export function EntriesPage({ entries, hasMore, loadingState, setLoadingState, s
         }
     }, [hasMore, moreLoadingState]);
 
-    // TODO: make this update when it changes
-    const isOnline = selfoss.db.online;
+    React.useEffect(() => {
+        // setup periodic server status sync
+        const interval = window.setInterval(selfoss.db.sync, 60 * 1000);
+
+        return () => {
+            window.clearInterval(interval);
+        };
+    }, []);
+
+    const isOnline = useOnline();
 
     const refreshOnClick = React.useCallback(
         (event) => handleRefreshSource({ event, source: currentSource, setLoadingState, setNavExpanded, reload }),
@@ -279,7 +293,7 @@ export function EntriesPage({ entries, hasMore, loadingState, setLoadingState, s
 
     if (loadingState === LoadingState.LOADING) {
         return (
-            <SpinnerBig />
+            <SpinnerBig label={_('entries_loading')} />
         );
     }
 
@@ -293,6 +307,18 @@ export function EntriesPage({ entries, hasMore, loadingState, setLoadingState, s
                 >
                     {_('source_refresh')}
                 </button>
+                : null
+            }
+            {currentSource !== null && allowedToWrite && isOnline ?
+                <Link
+                    to={{
+                        pathname: '/manage/sources',
+                        hash: `#source-${currentSource}`
+                    }}
+                    className="entries-go-to-settings"
+                >
+                    {_('source_go_to_settings')}
+                </Link>
                 : null
             }
             {entries.map((entry) => (
@@ -316,7 +342,7 @@ export function EntriesPage({ entries, hasMore, loadingState, setLoadingState, s
                         aria-label={_('more')}
                         onClick={moreLoadingState !== LoadingState.LOADING ? moreOnClick : null}
                     >
-                        {moreLoadingState !== LoadingState.LOADING ? <span>{_('more')}</span> : <Spinner size="3x" />}
+                        {moreLoadingState !== LoadingState.LOADING ? <span>{_('more')}</span> : <Spinner size="3x" label={_('entries_loading')} />}
                     </button>
                     : null}
                 {entries.length > 0 ?
@@ -366,7 +392,7 @@ const initialState = {
      */
     selectedEntry: null,
     expandedEntries: {},
-    loadingState: LoadingState.INITIAL
+    loadingState: LoadingState.INITIAL,
 };
 
 export default class StateHolder extends React.Component {
@@ -376,7 +402,11 @@ export default class StateHolder extends React.Component {
 
         this.reload = this.reload.bind(this);
         this.setLoadingState = this.setLoadingState.bind(this);
+        this.activateEntry = this.activateEntry.bind(this);
+        this.deactivateEntry = this.deactivateEntry.bind(this);
         this.markVisibleRead = this.markVisibleRead.bind(this);
+        this.markEntryRead = this.markEntryRead.bind(this);
+        this.markEntryStarred = this.markEntryStarred.bind(this);
     }
 
     setEntries(entries) {
@@ -473,10 +503,20 @@ export default class StateHolder extends React.Component {
      * @param {number} id of entry
      */
     activateEntry(id) {
-        const entry = document.querySelector(`.entry[data-entry-id="${id}"]`);
+        if (selfoss.config.autoCollapse) {
+            this.collapseAllEntries();
+        }
 
-        if (!this.isEntryExpanded(id)) {
-            entry.querySelector('.entry-title > .entry-title-link').click();
+        this.setSelectedEntry(id);
+
+        // show/hide (with toolbar)
+        this.setEntryExpanded(id, true);
+
+        // automark as read
+        const entry = this.state.entries.find((entry) => id === entry.id);
+        const autoMarkAsRead = selfoss.isAllowedToWrite() && selfoss.config.autoMarkAsRead && entry.unread == 1;
+        if (autoMarkAsRead) {
+            this.markEntryRead(id, true);
         }
     }
 
@@ -487,15 +527,11 @@ export default class StateHolder extends React.Component {
      * @param {number} id of entry
      */
     deactivateEntry(id) {
-        const entry = document.querySelector(`.entry[data-entry-id="${id}"]`);
-
-        if (this.isEntryExpanded(id)) {
-            entry.querySelector('.entry-title > .entry-title-link').click();
-        }
+        this.setEntryExpanded(id, false);
     }
 
 
-    starEntry(id, starred) {
+    starEntryInView(id, starred) {
         this.setEntries((entries) =>
             entries.map((entry) => {
                 if (entry.id === id) {
@@ -511,7 +547,7 @@ export default class StateHolder extends React.Component {
     }
 
 
-    markEntry(id, unread) {
+    markEntryInView(id, unread) {
         this.setEntries((entries) =>
             entries.map((entry) => {
                 if (entry.id === id) {
@@ -538,8 +574,8 @@ export default class StateHolder extends React.Component {
                 return newStatus;
             });
             if (newStatus) {
-                this.starEntry(id, newStatus.starred);
-                this.markEntry(id, newStatus.unread);
+                this.starEntryInView(id, newStatus.starred);
+                this.markEntryInView(id, newStatus.unread);
             }
         });
     }
@@ -650,9 +686,9 @@ export default class StateHolder extends React.Component {
                 selfoss.dbOffline.enqueueStatuses(statuses);
             }).catch((error) => {
                 if (error instanceof HttpError && error.response.status === 403) {
-                    selfoss.history.push('/login');
-                    // TODO: Use location state once we switch to BrowserRouter
-                    selfoss.app.setLoginFormError(selfoss.app._('error_session_expired'));
+                    selfoss.history.push('/sign/in', {
+                        error: selfoss.app._('error_session_expired')
+                    });
                     return;
                 }
 
@@ -664,8 +700,126 @@ export default class StateHolder extends React.Component {
         });
     }
 
+    /**
+     * Requests for an entry to be marked read/unread in the model.
+     * @param {number} id of entry to mark
+     * @param {bool|'toggle'} true to mark read, false to mark unread
+     */
+    markEntryRead(id, markRead) {
+        // only loggedin users
+        if (!selfoss.isAllowedToWrite()) {
+            console.log('User not allowed to mark an entry (un)read.');
+            return;
+        }
+
+        const entry = this.state.entries.find((entry) => id === entry.id);
+        if (markRead === 'toggle') {
+            markRead = entry.unread;
+        }
+
+        this.markEntryInView(id, !markRead);
+
+        // update statistics in main menue and the currently active tag
+        function updateStats(markRead) {
+            // update all unread counters
+            const unreadstats = selfoss.app.state.unreadItemsCount;
+            const diff = markRead ? -1 : 1;
+
+            selfoss.refreshUnread(unreadstats + diff);
+
+            // update unread on tags and sources
+            // Only a single instance of each tag per entry so we can just assign.
+            const entryTags = Object.fromEntries(Object.keys(entry.tags).map((tag) => [tag, diff]));
+            selfoss.app.refreshTagSourceUnread(
+                entryTags,
+                {[entry.source]: diff}
+            );
+        }
+        updateStats(markRead);
+
+        if (selfoss.db.enableOffline.value) {
+            selfoss.dbOffline.entryMark(id, !markRead);
+        }
+
+        itemsRequests.mark(id, !markRead).then(() => {
+            selfoss.db.setOnline();
+        }).catch(function(error) {
+            selfoss.handleAjaxError(error).then(function() {
+                selfoss.dbOffline.enqueueStatus(id, 'unread', !markRead);
+            }).catch(function(error) {
+                if (error instanceof HttpError && error.response.status === 403) {
+                    selfoss.history.push('/sign/in', {
+                        error: selfoss.app._('error_session_expired')
+                    });
+                    return;
+                }
+
+                // rollback ui changes
+                this.markEntryInView(id, markRead);
+                updateStats(!markRead);
+                selfoss.app.showError(selfoss.app._('error_mark_item') + ' ' + error.message);
+            });
+        });
+    }
+
+    /**
+     * Requests for an entry to be marked (un)starred in the model.
+     * @param {number} id of entry to mark
+     * @param {bool|'toggle'} true to mark starred, false to mark unstarred
+     */
+    markEntryStarred(id, markStarred) {
+        // only loggedin users
+        if (!selfoss.isAllowedToWrite()) {
+            console.log('User not allowed to (un)star an entry.');
+            return;
+        }
+
+        if (markStarred === 'toggle') {
+            const entry = this.state.entries.find((entry) => id === entry.id);
+            markStarred = !entry.starred;
+        }
+
+        this.starEntryInView(id, markStarred);
+
+        // update statistics in main menu
+        function updateStats(markStarred) {
+            selfoss.app.setStarredItemsCount((starred) => starred + (markStarred ? 1 : -1));
+        }
+        updateStats(markStarred);
+
+        if (selfoss.db.enableOffline.value) {
+            selfoss.dbOffline.entryStar(id, markStarred);
+        }
+
+        itemsRequests.starr(id, markStarred).then(() => {
+            selfoss.db.setOnline();
+        }).catch(function(error) {
+            selfoss.handleAjaxError(error).then(function() {
+                selfoss.dbOffline.enqueueStatus(id, 'starred', markStarred);
+            }).catch(function(error) {
+                if (error instanceof HttpError && error.response.status === 403) {
+                    selfoss.history.push('/sign/in', {
+                        error: selfoss.app._('error_session_expired')
+                    });
+                    return;
+                }
+
+                // rollback ui changes
+                this.starEntryInView(id, !markStarred);
+                updateStats(!markStarred);
+                selfoss.app.showError(selfoss.app._('error_star_item') + ' ' + error.message);
+            });
+        });
+    }
+
     reload() {
-        this.setState(initialState);
+        /**
+         * HACK: A counter that is increased every time reload action (r key) is triggered.
+         */
+        selfoss.history.replace({
+            ...this.props.location,
+            state: forceReload(this.props.location),
+        });
     }
 
     render() {
@@ -686,6 +840,7 @@ export default class StateHolder extends React.Component {
 }
 
 StateHolder.propTypes = {
+    location: PropTypes.object.isRequired,
     match: PropTypes.object.isRequired,
     setNavExpanded: PropTypes.func.isRequired,
     navSourcesExpanded: PropTypes.bool.isRequired,

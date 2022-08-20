@@ -101,5 +101,18 @@
   "lang_online_count": "Sunucuda bulunan ögeler",
   "lang_filter": "Filtrele",
   "lang_article_reading_time": "{0} dakika okuma",
-  "lang_experimental": "Deneysel"
+  "lang_experimental": "Deneysel",
+  "lang_source_warn_cancel_dirty": "Kaydedilmemiş değişiklikler atılsın mı?",
+  "lang_sources_leaving_unsaved_prompt": "Kaydedilmemiş kaynak değişiklikleri olmasına rağmen ayarlardan çıkılsın mı?",
+  "lang_source_browse": "Göz at",
+  "lang_source_menu": "Daha fazla eylem",
+  "lang_tag_change_color_button_title": "Rengi değiştir",
+  "lang_source_go_to_settings": "Ayarlarda aç",
+  "lang_sources_loading": "Kaynaklar yükleniyor…",
+  "lang_no_sources": "Yapılandırılan kaynak yok.",
+  "lang_entries_loading": "Yayınlar yükleniyor…",
+  "lang_source_deleting": "Kaynak siliniyor…",
+  "lang_login_in_progress": "Oturum açmaya çalışılıyor…",
+  "lang_source_params_loading": "Parametreler yükleniyor…",
+  "lang_source_saving": "Kaynak değişiklikleri kaydediliyor…"
 }

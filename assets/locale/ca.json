@@ -99,5 +99,20 @@
   "lang_error_check_log_file": "S'ha produït un error. Comproveu el fitxer de registre \"{0}\".",
   "lang_offline_navigation_unavailable": "Canviar etiquetes i fonts no és disponible en el mode fora de línia.",
   "lang_error_offline_storage_not_available": "Emmagatzematge fora de línia no disponible. Assegureu-vos que el navegador {0}suporta IndexedDB API{1}. Si utilitzeu un navegador basat en Google Chrome, que no estigueu utilitzant selfoss en mode incògnit.",
-  "lang_error_edit_source": "No es pot desar els canvis a les fonts:"
+  "lang_error_edit_source": "No es pot desar els canvis a les fonts:",
+  "lang_article_reading_time": "{0} min lectura",
+  "lang_experimental": "Experimental",
+  "lang_source_menu": "Més accions",
+  "lang_source_browse": "Navega",
+  "lang_sources_leaving_unsaved_prompt": "Voleu deixar la configuració amb els canvis de font no desats?",
+  "lang_source_warn_cancel_dirty": "Vols descartar els canvis no desats?",
+  "lang_tag_change_color_button_title": "Canvia el color",
+  "lang_sources_loading": "S'estan carregant les fonts…",
+  "lang_source_deleting": "S'està suprimint la font…",
+  "lang_source_params_loading": "S'estan carregant els paràmetres…",
+  "lang_no_sources": "No hi ha fonts configurades.",
+  "lang_source_saving": "S'estan desant els canvis a la font…",
+  "lang_source_go_to_settings": "Obre a la configuració",
+  "lang_entries_loading": "S'estan carregant les entrades…",
+  "lang_login_in_progress": "S'està intentant iniciar sessió…"
 }
