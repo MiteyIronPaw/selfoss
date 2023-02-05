@@ -3,25 +3,38 @@ import PropTypes from 'prop-types';
 import classNames from 'classnames';
 import { SpinnerBig } from './Spinner';
 import { useHistory, useLocation } from 'react-router-dom';
+import { HttpError, LoginError } from '../errors';
+import { ConfigurationContext } from '../helpers/configuration';
 import { LocalizationContext } from '../helpers/i18n';
 
 function handleLogIn({
     event,
+    configuration,
     history,
     setLoading,
     username,
     password,
-    offlineEnabled
+    enableOffline,
+    returnLocation,
 }) {
     event.preventDefault();
 
     setLoading(true);
 
-    selfoss.login({ username, password, offlineEnabled }).then(() => {
-        history.push('/');
-    }).catch(() => {
+    selfoss.login({ configuration, username, password, enableOffline }).then(() => {
+        history.push(returnLocation);
+    }).catch((err) => {
+        const message =
+            err instanceof LoginError
+                ? selfoss.app._('login_invalid_credentials')
+                : selfoss.app._('login_error_generic', {
+                    errorMessage:
+                        err instanceof HttpError
+                            ? `HTTP ${err.response.status} ${err.message}`
+                            : err.message,
+                });
         history.replace('/sign/in', {
-            error: selfoss.app._('login_invalid_credentials')
+            error: message,
         });
     }).finally(() => {
         setLoading(false);
@@ -30,27 +43,31 @@ function handleLogIn({
 
 export default function LoginForm({
     offlineEnabled,
-    setOfflineEnabled,
 }) {
     const [username, setUsername] = React.useState('');
     const [password, setPassword] = React.useState('');
     const [loading, setLoading] = React.useState(false);
+    const [enableOffline, setEnableOffline] = React.useState(offlineEnabled);
 
+    const configuration = React.useContext(ConfigurationContext);
     const history = useHistory();
     const location = useLocation();
     const error = location?.state?.error;
+    const returnLocation = location?.state?.returnLocation ?? '/';
 
     const formOnSubmit = React.useCallback(
         (event) =>
             handleLogIn({
                 event,
+                configuration,
                 history,
                 setLoading,
                 username,
                 password,
-                offlineEnabled
+                enableOffline,
+                returnLocation,
             }),
-        [history, username, password, offlineEnabled]
+        [configuration, history, username, password, enableOffline, returnLocation]
     );
 
     const usernameOnChange = React.useCallback(
@@ -64,8 +81,8 @@ export default function LoginForm({
     );
 
     const offlineOnChange = React.useCallback(
-        (event) => setOfflineEnabled(event.target.checked),
-        [setOfflineEnabled]
+        (event) => setEnableOffline(event.target.checked),
+        [setEnableOffline]
     );
 
     const _ = React.useContext(LocalizationContext);
@@ -81,7 +98,7 @@ export default function LoginForm({
             >
                 <ul id="login">
                     <li>
-                        <h1>{selfoss.config.htmlTitle} login</h1>
+                        <h1>{configuration.htmlTitle} login</h1>
                     </li>
                     <li>
                         <label htmlFor="username">
@@ -124,7 +141,7 @@ export default function LoginForm({
                                 id="enableoffline"
                                 accessKey="o"
                                 onChange={offlineOnChange}
-                                checked={offlineEnabled}
+                                checked={enableOffline}
                             />{' '}
                             <span className="badge-experimental">
                                 {_('experimental')}
@@ -150,5 +167,4 @@ export default function LoginForm({
 
 LoginForm.propTypes = {
     offlineEnabled: PropTypes.bool.isRequired,
-    setOfflineEnabled: PropTypes.func.isRequired,
 };

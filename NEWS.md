@@ -1,18 +1,36 @@
 # selfoss news
-## 2.19 – unreleased
-**This version requires PHP 5.6 or newer.**
+## 2.20 – unreleased
+
+**This version currently requires PHP 7.2.5 or newer. (Will be increased later.)**
+
+### Bug fixes
+- Configuration parser was changed to *raw* method, which relaxes the requirement to quote option values containing special characters in `config.ini`. ([#1371](https://github.com/fossar/selfoss/issues/1371))
+- Fix “Mark all as read” button not hiding marked articles in unread view, not updating the unread counts in menu properly, and not closing menu on mobile. ([#1388](https://github.com/fossar/selfoss/issues/1388)
+- Re-added “Next” button on smartphones. ([#1406](https://github.com/fossar/selfoss/issues/1406)
+
+### Other changes
+- `tidy` PHP extension is now required if you want to use “Content extractor” spout. ([#1392](https://github.com/fossar/selfoss/pull/1392))
+- Password hashing helper page will delegate the hashing to server again. ([#1401](https://github.com/fossar/selfoss/pull/1401))
+
+## 2.19 – 2022-10-12
+**This version requires PHP ~~5.6~~ 7.2 (see known regressions section) or newer. It is also the last version to support PHP 7.**
+
+### Known regressions
+- Values in `config.ini` containing special characters need to be quoted. Will be fixed by <https://github.com/fossar/selfoss/commit/ba9339372a7bc0678c6c1f74336406ab1bbb4ecb>.
+- Updating sources that already contain items will fail on PHP < 7.2.0. Will be fixed by <https://github.com/fossar/selfoss/commit/d6e9bc8b01a7d58630772f6dc9938e88a28be706>.
+- Updating RSS sources without a valid date fails. Will be fixed by [#1385](https://github.com/fossar/selfoss/pull/1385).
 
 ### New features
 - Thumbnails can be disabled ([#897](https://github.com/fossar/selfoss/pull/897))
 - Reddit spout replaced fragile imgur heuristics with previews provided by the JSON API ([#1033](https://github.com/fossar/selfoss/pull/1033))
-- Support for **using selfoss offline** was added. Note that this is only available in [secure contexts](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts), that is, over HTTPS. ([#1014](https://github.com/fossar/selfoss/issues/1014))
-- Long articles will no longer be arranged into columns, allowing for smoother reading experience ([#1081](https://github.com/fossar/selfoss/pull/1081))
+- Experimental support for **using selfoss offline** was added. Note that this is only available in [secure contexts](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts), that is, over HTTPS, and can be very buggy. ([#1014](https://github.com/fossar/selfoss/issues/1014))
+- Long articles that do not fit on a single screen will no longer be arranged into columns, allowing for smoother reading experience ([#1081](https://github.com/fossar/selfoss/pull/1081))
 - Diaspora share button was added, you can enable it with `d`. ([#1121](https://github.com/fossar/selfoss/pull/1121))
 - “Copy to clipboard” share button was added, you can enable it with `c`. ([#1142](https://github.com/fossar/selfoss/pull/1142))
 - [Native sharer](https://developer.mozilla.org/en-US/docs/Web/API/Navigator/share) is available in secure contexts in browsers that support it. You can enable it by adding `a` to `share` key in your config. ([#1035](https://github.com/fossar/selfoss/pull/1035))
 - Data directory can be configured ([#1043](https://github.com/fossar/selfoss/pull/1043))
 - New spout for searching Twitter (e.g. following hashtags) was added. ([#1213](https://github.com/fossar/selfoss/pull/1213))
-- Added option `reading_speed_wpm` for showing estimated reading time. ([#1232](https://github.com/fossar/selfoss/pull/1232))
+- Added option `reading_speed_wpm` for showing estimated reading time, set it to the *number of words you can read in a minute*. ([#1232](https://github.com/fossar/selfoss/pull/1232))
 - Added option `db_socket` for connecting to MySQL database through UNIX domain. ([#1284](https://github.com/fossar/selfoss/pull/1284))
 - Search query is now part of URL. ([#1216](https://github.com/fossar/selfoss/pull/1216))
 - A page that will pre-fill a form for adding a source with URL has been added. You can find it on `https://yourselfossurl.com/manage/sources/add?url=some-feed-url`. ([#1310](https://github.com/fossar/selfoss/pull/1310), [#254](https://github.com/fossar/selfoss/issues/254))
@@ -22,9 +40,13 @@
 - Add link from settings page to individual sources and vice versa. ([#1329](https://github.com/fossar/selfoss/pull/1329), [#1340](https://github.com/fossar/selfoss/pull/1340))
 - Tag colour can be now changed using keyboard. ([#1335](https://github.com/fossar/selfoss/pull/1335))
 - YouTube spout now supports all YouTube URLs that provide feeds. ([#1273](https://github.com/fossar/selfoss/issues/1273))
+- Add `open_in_background_tab` option to try to make <kbd>v</kbd> shortcut open articles in a background tab ([does not work in Chromium-based browsers](https://crbug.com/431335)). ([#1354](https://github.com/fossar/selfoss/pull/1354))
+- GitHub sources now include author. ([#1367](https://github.com/fossar/selfoss/pull/1367))
+- Twitter sources now indicate author using the author field rather than including in the title. ([#1367](https://github.com/fossar/selfoss/pull/1367))
 - Translations into several new languages were added:
   - English (United Kingdom): `en-GB`
   - French (Canada): `fr-CA`
+  - Galician: `gl`
   - Hebrew: `he`
   - Indonesian: `id`
   - Portuguese (European): `pt`
@@ -41,15 +63,24 @@
 - Fixed missing styling in article contents ([#1221](https://github.com/fossar/selfoss/pull/1221))
 - Golem, Lightreading and Heise spouts now use Graby for extracting article contents instead of our own defunct extraction rules. ([#1245](https://github.com/fossar/selfoss/pull/1245))
 - The tag colour picker now pre-selects the current colour instead of a placeholder colour. ([#1269](https://github.com/fossar/selfoss/pull/1269))
+- OPML import now correctly handles valid files. ([#1366](https://github.com/fossar/selfoss/pull/1366))
+- OPML import will prefer `title` attribute over text for feed names. ([#1366](https://github.com/fossar/selfoss/pull/1366))
+- OPML import is now able to read files when the browser sends an incorrect MIME type. ([#1366](https://github.com/fossar/selfoss/pull/1366))
 
 ### API changes
 - `tags` attribute is now consistently array of strings, numbers are numbers and booleans are booleans. **This might break third-party clients that have not updated yet.** ([#948](https://github.com/fossar/selfoss/pull/948))
 - API is now versioned separately from selfoss and follows [semantic versioning](https://semver.org/) ([#1137](https://github.com/fossar/selfoss/pull/1137))
 - *API 2.21.0*: `/mark` now accepts list of item IDs encoded as JSON. Requests using `application/x-www-form-urlencoded` are deprecated. ([#1182](https://github.com/fossar/selfoss/pull/1182))
 - Dates returned as part of items now strictly follow ISO8601 format. ([#1246](https://github.com/fossar/selfoss/pull/1246))
+- The following are deprecated and will be removed in next selfoss version:
+  - Passing credentials in query string, use cookies instead. ([#1360](https://github.com/fossar/selfoss/pull/1360))
+  - `GET /login` endpoint, use `POST /login`. ([#1360](https://github.com/fossar/selfoss/pull/1360))
+  - `GET /logout` was deprecated in favour of newly introduced (*API 4.1.0*) `DELETE /api/session/current`. ([#1360](https://github.com/fossar/selfoss/pull/1360))
+  - `POST /source/delete/:id` in favour of `DELETE /source/:id`. ([#1360](https://github.com/fossar/selfoss/pull/1360))
+- *API 6.0.0*: Makes the `author` field `null` when an item author is not known ([#1367](https://github.com/fossar/selfoss/pull/1367))
 
 ### Customization changes
-- `selfoss.shares.register` changed its signature: it no longer takes a boolean argument, and the callback is expected to open a window itself, instead of returning a URL. The `register` method now also expects a label and a HTML code of an icon (you can use a `<img>` tag, inline `<svg>`, emoji, etc.).
+- `selfoss.shares.register` was removed. Instead you should set `selfoss.customSharers` to an object of *sharer* objects. The `action` callback is now expected to open a window on its own, instead of returning a URL. A label and a HTML code of an icon (you can use a `<img>` tag, inline `<svg>`, emoji, etc.) are now expected.
 
   To demonstrate, if you previously had
 
@@ -62,20 +93,18 @@
   in your `user.js` file, you will need to change it to
 
   ```javascript
-  selfoss.shares.register('moo', 'Share using Moo', 'm', '🚛', function(data) {
-      window.open('http://moo.foobar/share?u=' + encodeURIComponent(data.url) + '&t=' + encodeURIComponent(data.title));
-  });
+  selfoss.customSharers = {
+      'm': {
+          label: 'Share using Moo',
+          icon: '🚛',
+          action: ({url, title}) => {
+              window.open(`http://moo.foobar/share?u=${encodeURIComponent(url)}&t=${encodeURIComponent(title)}`);
+          },
+      },
+  };
   ```
 
-  or if your browser supports it, simply
-
-  ```javascript
-  selfoss.shares.register('moo', 'Share using Moo', 'm', '🚛', ({url, title}) => {
-      window.open(`http://moo.foobar/share?u=${encodeURIComponent(url)}&t=${encodeURIComponent(title)}`);
-  });
-  ```
-
-  ([#1017](https://github.com/fossar/selfoss/pull/1017), [#1035](https://github.com/SSilence/selfoss/pull/1035))
+  ([#1017](https://github.com/fossar/selfoss/pull/1017), [#1035](https://github.com/SSilence/selfoss/pull/1035), [#1359](https://github.com/SSilence/selfoss/pull/1359))
 - Custom FullTextRss filter were moved to `fulltextrss` directory in data directory ([#1043](https://github.com/fossar/selfoss/pull/1043))
 - Spouts can now implement `getSourceIcon()` instead of `getIcon()` when icon is associated with the feed, not individual icons. ([#1190](https://github.com/fossar/selfoss/pull/1190))
 - Some language files have been renamed to use correct [IETF language tag](https://en.wikipedia.org/wiki/IETF_language_tag) and you might need to change the `language` key in your `config.ini`:
@@ -88,6 +117,7 @@
 - `spout` classes no longer need to implement `Iterator`, instead they should return `Iterator` of newly introduced `Item` objects from `getItems()` method. The types of properties of items have also been revisited. ([#1341](https://github.com/fossar/selfoss/pull/1341), [#1342](https://github.com/fossar/selfoss/pull/1342))
 
 ### Other changes
+- Amine and others have rewritten the **Android app** from scratch, you will want to install the [new one from F-Droid](https://f-droid.org/packages/bou.amine.apps.readerforselfossv2.android) to keep receiving updates.
 - The front-end has been modernized using React framework, this will greatly simplify future development. ([#1216](https://github.com/fossar/selfoss/pull/1216))
 - The front-end routing no longer relies on hash fragment, resulting in nicer URLs. ([#1299](https://github.com/fossar/selfoss/pull/1299))
 - Prevent sending referrer headers when opening links and sharing for improved privacy. ([#1301](https://github.com/fossar/selfoss/pull/1301))
@@ -113,7 +143,8 @@
 - Placeholders are now used for images before they are loaded to avoid content jumping around ([#1204](https://github.com/fossar/selfoss/pull/1204))
 - Search button is now always on the screen, avoiding the need to scroll to top to be able to use it. ([#1231](https://github.com/fossar/selfoss/issues/1231))
 - Button for opening articles, tags, sources and filters in the sidebar, as well as the source and tag links in articles are now real links, allowing to open them in a new tab by middle-clicking them. ([#1216](https://github.com/fossar/selfoss/issues/1216), [#695](https://github.com/fossar/selfoss/issues/695))
-- Configuration is no longer managed by F3 framework. ([#1261](https://github.com/fossar/selfoss/pull/1261))
+- The way `config.ini` is parsed has changed. If you use any of the following characters `?{}|&~!()^"`, e.g. for database password, you will need to quote the config value like `db_password="life0fD4ng3r!"`. This is a consequence of replacing F3 framework with [PHP’s built-in INI parser](https://www.php.net/manual/en/function.parse-ini-file.php). ([#1261](https://github.com/fossar/selfoss/pull/1261))
+- Removed `anonymizer` configuration option. ([#1358](https://github.com/fossar/selfoss/pull/1358))
 
 
 ## 2.18 – 2018-03-05

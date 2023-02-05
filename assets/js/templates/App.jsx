@@ -1,18 +1,21 @@
-import React from 'react';
+import React, {
+    useState,
+} from 'react';
 import PropTypes from 'prop-types';
 import nullable from 'prop-types-nullable';
 import {
     BrowserRouter as Router,
     Switch,
     Route,
+    Link,
     Redirect,
     useHistory,
     useLocation,
-    useRouteMatch,
 } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import Collapse from '@kunukn/react-collapse';
 import classNames from 'classnames';
+import HashPassword from './HashPassword';
 import LoginForm from './LoginForm';
 import SourcesPage from './SourcesPage';
 import EntriesPage from './EntriesPage';
@@ -20,6 +23,8 @@ import Navigation from './Navigation';
 import SearchList from './SearchList';
 import makeShortcuts from '../shortcuts';
 import * as icons from '../icons';
+import { ConfigurationContext } from '../helpers/configuration';
+import { useIsSmartphone, useListenableValue } from '../helpers/hooks';
 import { ENTRIES_ROUTE_PATTERN } from '../helpers/uri';
 import { i18nFormat, LocalizationContext } from '../helpers/i18n';
 import { LoadingState } from '../requests/LoadingState';
@@ -88,6 +93,36 @@ function NotFound() {
     );
 }
 
+function CheckAuthorization({
+    isAllowed,
+    returnLocation,
+    _,
+    children,
+}) {
+    const history = useHistory();
+    if (!isAllowed) {
+        const [preLink, inLink, postLink] = _('error_unauthorized').split(/\{(?:link_begin|link_end)\}/);
+        history.push('/sign/in', {
+            returnLocation,
+        });
+
+        return (
+            <p>
+                {preLink}<Link to="/sign/in">{inLink}</Link>{postLink}
+            </p>
+        );
+    } else {
+        return children;
+    }
+}
+
+CheckAuthorization.propTypes = {
+    isAllowed: PropTypes.bool.isRequired,
+    returnLocation: PropTypes.string,
+    _: PropTypes.func.isRequired,
+    children: PropTypes.any,
+};
+
 function PureApp({
     navSourcesExpanded,
     setNavSourcesExpanded,
@@ -107,35 +142,17 @@ function PureApp({
     reloadAll,
 }) {
     const [navExpanded, setNavExpanded] = React.useState(false);
-    const [smartphone, setSmartphone] = React.useState(false);
-    const [offlineEnabled, setOfflineEnabled] = React.useState(selfoss.db.enableOffline.value);
+    const smartphone = useIsSmartphone();
+    const offlineEnabled = useListenableValue(selfoss.db.enableOffline);
     const [entriesPage, setEntriesPage] = React.useState(null);
+    const configuration = React.useContext(ConfigurationContext);
 
     React.useEffect(() => {
         // init shortcut handler
         const destroyShortcuts = makeShortcuts();
 
-        const smartphoneListener = (event) => {
-            setSmartphone(event.matches);
-        };
-
-        const offlineEnabledListener = (event) => {
-            setOfflineEnabled(event.value);
-        };
-
-        const smartphoneMediaQuery = window.matchMedia('(max-width: 641px)');
-
-        // It might happen that values change between creating the component and setting up the event handlers.
-        smartphoneListener({ matches: smartphoneMediaQuery.matches });
-        offlineEnabledListener({ value: selfoss.db.enableOffline.value });
-
-        smartphoneMediaQuery.addEventListener('change', smartphoneListener);
-        selfoss.db.enableOffline.addEventListener('change', offlineEnabledListener);
-
         return () => {
             destroyShortcuts();
-            smartphoneMediaQuery.removeEventListener('change', smartphoneListener);
-            selfoss.db.enableOffline.removeEventListener('change', offlineEnabledListener);
         };
     }, []);
 
@@ -146,7 +163,7 @@ function PureApp({
     }, [history]);
 
     // Prepare path of the homepage for redirecting from /
-    let homePagePath = selfoss.config.homepage.split('/');
+    let homePagePath = configuration.homepage.split('/');
     if (!homePagePath[1]) {
         homePagePath.push('all');
     }
@@ -164,19 +181,16 @@ function PureApp({
         []
     );
 
-    const isEntriesRoute = useRouteMatch(ENTRIES_ROUTE_PATTERN) !== null;
+    const [title, setTitle] = useState(null);
+    const [globalUnreadCount, setGlobalUnreadCount] = useState(null);
     React.useEffect(() => {
-        if (isEntriesRoute && unreadItemsCount > 0) {
-            document.title = selfoss.htmlTitle + ' (' + unreadItemsCount + ')';
-        } else {
-            document.title = selfoss.htmlTitle;
-        }
-    }, [unreadItemsCount, isEntriesRoute]);
+        document.title = (title ?? configuration.htmlTitle) + ((globalUnreadCount ?? 0) > 0 ? ` (${globalUnreadCount})` : '');
+    }, [configuration, title, globalUnreadCount]);
 
     const _ = React.useContext(LocalizationContext);
 
     return (
-        <React.Fragment>
+        <React.StrictMode>
             <Message message={globalMessage} />
 
             <Switch>
@@ -184,85 +198,107 @@ function PureApp({
                     {/* menu open for smartphone */}
                     <div id="loginform" role="main">
                         <LoginForm
-                            {...{offlineEnabled, setOfflineEnabled}}
+                            {...{offlineEnabled}}
                         />
                     </div>
                 </Route>
 
-                <Route path="/">
-                    <div id="nav-mobile" role="navigation">
-                        <div id="nav-mobile-logo">
-                            <div id="nav-mobile-count" className={classNames({'unread-count': true, offline: offlineState, online: !offlineState, unread: unreadItemsCount > 0})}>
-                                <span className={classNames({'offline-count': true, offline: offlineState, online: !offlineState, diff: unreadItemsCount !== unreadItemsOfflineCount && unreadItemsOfflineCount})}>{unreadItemsOfflineCount > 0 ? unreadItemsOfflineCount : ''}</span>
-                                <span className="count">{unreadItemsCount}</span>
-                            </div>
-                        </div>
-                        <button
-                            id="nav-mobile-settings"
-                            accessKey="t"
-                            aria-label={_('settingsbutton')}
-                            onClick={menuButtonOnClick}
-                        >
-                            <FontAwesomeIcon icon={icons.menu} size="2x" />
-                        </button>
-                    </div>
-
-                    {/* navigation */}
-                    <Collapse isOpen={!smartphone || navExpanded} className="collapse-css-transition">
-                        <div id="nav" role="navigation">
-                            <Navigation
-                                entriesPage={entriesPage}
-                                setNavExpanded={setNavExpanded}
-                                navSourcesExpanded={navSourcesExpanded}
-                                setNavSourcesExpanded={setNavSourcesExpanded}
-                                offlineState={offlineState}
-                                allItemsCount={allItemsCount}
-                                allItemsOfflineCount={allItemsOfflineCount}
-                                unreadItemsCount={unreadItemsCount}
-                                unreadItemsOfflineCount={unreadItemsOfflineCount}
-                                starredItemsCount={starredItemsCount}
-                                starredItemsOfflineCount={starredItemsOfflineCount}
-                                sourcesState={sourcesState}
-                                setSourcesState={setSourcesState}
-                                sources={sources}
-                                setSources={setSources}
-                                tags={tags}
-                                reloadAll={reloadAll}
+                <Route path="/password">
+                    <CheckAuthorization
+                        isAllowed={selfoss.isAllowedToWrite()}
+                        returnLocation="/password"
+                        _={_}
+                    >
+                        <div id="hashpasswordbody" role="main">
+                            <HashPassword
+                                setTitle={setTitle}
                             />
                         </div>
-                    </Collapse>
+                    </CheckAuthorization>
+                </Route>
 
-                    <ul id="search-list">
-                        <SearchList />
-                    </ul>
+                <Route path="/">
+                    <CheckAuthorization
+                        isAllowed={selfoss.isAllowedToRead()}
+                        _={_}
+                    >
+                        <div id="nav-mobile" role="navigation">
+                            <div id="nav-mobile-logo">
+                                <div id="nav-mobile-count" className={classNames({'unread-count': true, offline: offlineState, online: !offlineState, unread: unreadItemsCount > 0})}>
+                                    <span className={classNames({'offline-count': true, offline: offlineState, online: !offlineState, diff: unreadItemsCount !== unreadItemsOfflineCount && unreadItemsOfflineCount})}>{unreadItemsOfflineCount > 0 ? unreadItemsOfflineCount : ''}</span>
+                                    <span className="count">{unreadItemsCount}</span>
+                                </div>
+                            </div>
+                            <button
+                                id="nav-mobile-settings"
+                                accessKey="t"
+                                aria-label={_('settingsbutton')}
+                                onClick={menuButtonOnClick}
+                            >
+                                <FontAwesomeIcon icon={icons.menu} size="2x" />
+                            </button>
+                        </div>
 
-                    {/* content */}
-                    <div id="content" role="main">
-                        <Switch>
-                            <Route exact path="/">
-                                <Redirect to={`/${homePagePath.join('/')}`} />
-                            </Route>
-                            <Route path={ENTRIES_ROUTE_PATTERN}>
-                                {(routeProps) => (
-                                    <EntriesPage
-                                        {...routeProps}
-                                        ref={entriesRef}
-                                        setNavExpanded={setNavExpanded}
-                                        navSourcesExpanded={navSourcesExpanded}
-                                    />
-                                )}
-                            </Route>
-                            <Route path="/manage/sources">
-                                <SourcesPage />
-                            </Route>
-                            <Route path="*">
-                                <NotFound />
-                            </Route>
-                        </Switch>
-                    </div>
+                        {/* navigation */}
+                        <Collapse isOpen={!smartphone || navExpanded} className="collapse-css-transition">
+                            <div id="nav" role="navigation">
+                                <Navigation
+                                    entriesPage={entriesPage}
+                                    setNavExpanded={setNavExpanded}
+                                    navSourcesExpanded={navSourcesExpanded}
+                                    setNavSourcesExpanded={setNavSourcesExpanded}
+                                    offlineState={offlineState}
+                                    allItemsCount={allItemsCount}
+                                    allItemsOfflineCount={allItemsOfflineCount}
+                                    unreadItemsCount={unreadItemsCount}
+                                    unreadItemsOfflineCount={unreadItemsOfflineCount}
+                                    starredItemsCount={starredItemsCount}
+                                    starredItemsOfflineCount={starredItemsOfflineCount}
+                                    sourcesState={sourcesState}
+                                    setSourcesState={setSourcesState}
+                                    sources={sources}
+                                    setSources={setSources}
+                                    tags={tags}
+                                    reloadAll={reloadAll}
+                                />
+                            </div>
+                        </Collapse>
+
+                        <ul id="search-list">
+                            <SearchList />
+                        </ul>
+
+                        {/* content */}
+                        <div id="content" role="main">
+                            <Switch>
+                                <Route exact path="/">
+                                    <Redirect to={`/${homePagePath.join('/')}`} />
+                                </Route>
+                                <Route path={ENTRIES_ROUTE_PATTERN}>
+                                    {(routeProps) => (
+                                        <EntriesPage
+                                            {...routeProps}
+                                            ref={entriesRef}
+                                            setNavExpanded={setNavExpanded}
+                                            configuration={configuration}
+                                            navSourcesExpanded={navSourcesExpanded}
+                                            unreadItemsCount={unreadItemsCount}
+                                            setGlobalUnreadCount={setGlobalUnreadCount}
+                                        />
+                                    )}
+                                </Route>
+                                <Route path="/manage/sources">
+                                    <SourcesPage />
+                                </Route>
+                                <Route path="*">
+                                    <NotFound />
+                                </Route>
+                            </Switch>
+                        </div>
+                    </CheckAuthorization>
                 </Route>
             </Switch>
-        </React.Fragment>
+        </React.StrictMode>
     );
 }
 
@@ -349,6 +385,7 @@ export default class App extends React.Component {
             globalMessage: null,
         };
 
+        this._ = this._.bind(this);
         this.setTags = this.setTags.bind(this);
         this.setTagsState = this.setTagsState.bind(this);
         this.setSources = this.setSources.bind(this);
@@ -533,7 +570,7 @@ export default class App extends React.Component {
         const fallbackLanguage = 'en';
         const langKey = `lang_${identifier}`;
 
-        let preferredLanguage = selfoss.config.language;
+        let preferredLanguage = this.props.configuration.language;
 
         // locale auto-detection
         if (preferredLanguage === null) {
@@ -658,38 +695,51 @@ export default class App extends React.Component {
 
     render() {
         return (
-            <LocalizationContext.Provider value={this._}>
-                <PureApp
-                    navSourcesExpanded={this.state.navSourcesExpanded}
-                    setNavSourcesExpanded={this.setNavSourcesExpanded}
-                    offlineState={this.state.offlineState}
-                    allItemsCount={this.state.allItemsCount}
-                    allItemsOfflineCount={this.state.allItemsOfflineCount}
-                    unreadItemsCount={this.state.unreadItemsCount}
-                    unreadItemsOfflineCount={this.state.unreadItemsOfflineCount}
-                    starredItemsCount={this.state.starredItemsCount}
-                    starredItemsOfflineCount={this.state.starredItemsOfflineCount}
-                    globalMessage={this.state.globalMessage}
-                    sourcesState={this.state.sourcesState}
-                    setSourcesState={this.setSourcesState}
-                    sources={this.state.sources}
-                    setSources={this.setSources}
-                    tags={this.state.tags}
-                    reloadAll={this.reloadAll}
-                />
-            </LocalizationContext.Provider>
+            <ConfigurationContext.Provider value={this.props.configuration}>
+                <LocalizationContext.Provider value={this._}>
+                    <PureApp
+                        navSourcesExpanded={this.state.navSourcesExpanded}
+                        setNavSourcesExpanded={this.setNavSourcesExpanded}
+                        offlineState={this.state.offlineState}
+                        allItemsCount={this.state.allItemsCount}
+                        allItemsOfflineCount={this.state.allItemsOfflineCount}
+                        unreadItemsCount={this.state.unreadItemsCount}
+                        unreadItemsOfflineCount={this.state.unreadItemsOfflineCount}
+                        starredItemsCount={this.state.starredItemsCount}
+                        starredItemsOfflineCount={this.state.starredItemsOfflineCount}
+                        globalMessage={this.state.globalMessage}
+                        sourcesState={this.state.sourcesState}
+                        setSourcesState={this.setSourcesState}
+                        sources={this.state.sources}
+                        setSources={this.setSources}
+                        tags={this.state.tags}
+                        reloadAll={this.reloadAll}
+                    />
+                </LocalizationContext.Provider>
+            </ConfigurationContext.Provider>
         );
     }
 }
+
+App.propTypes = {
+    configuration: PropTypes.object.isRequired,
+};
 
 /**
  * Creates the selfoss single-page application
  * with the required contexts.
  */
-export function createApp(basePath, appRef) {
+export function createApp({
+    basePath,
+    appRef,
+    configuration,
+}) {
     return (
         <Router basename={basePath}>
-            <App ref={appRef} />
+            <App
+                ref={appRef}
+                configuration={configuration}
+            />
         </Router>
     );
 }

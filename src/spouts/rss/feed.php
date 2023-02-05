@@ -5,7 +5,7 @@ namespace spouts\rss;
 use helpers\FeedReader;
 use helpers\Image;
 use Monolog\Logger;
-use SimplePie_Item;
+use SimplePie;
 use spouts\Item;
 
 /**
@@ -48,7 +48,7 @@ class feed extends \spouts\spout {
     /** @var ?string title of the source */
     protected $title = null;
 
-    /** @var SimplePie_Item[] current fetched items */
+    /** @var SimplePie\Item[] current fetched items */
     private $items = [];
 
     public function __construct(FeedReader $feed, Image $imageHelper, Logger $logger) {
@@ -90,7 +90,7 @@ class feed extends \spouts\spout {
     }
 
     /**
-     * @return \Generator<Item<SimplePie_Item>> list of items
+     * @return \Generator<Item<SimplePie\Item>> list of items
      */
     public function getItems() {
         foreach ($this->items as $item) {
@@ -124,14 +124,17 @@ class feed extends \spouts\spout {
     /**
      * @return ?string
      */
-    private function getAuthorString(SimplePie_Item $item) {
+    private function getAuthorString(SimplePie\Item $item) {
         $author = $item->get_author();
         if (isset($author)) {
+            // Both are sanitized using SimplePie::CONSTRUCT_TEXT
+            // so they are plain text strings with escaped HTML special characters.
             $name = $author->get_name();
-            if (isset($name)) {
+            $email = $author->get_email();
+            if ($name !== null) {
                 return htmlspecialchars_decode($name);
-            } else {
-                return htmlspecialchars_decode((string) $author->get_email());
+            } elseif ($email !== null) {
+                return htmlspecialchars_decode($author->get_email());
             }
         }
 
@@ -142,7 +145,7 @@ class feed extends \spouts\spout {
         // Try to use feed logo first
         $feedLogoUrl = $this->feed->getImageUrl();
         if ($feedLogoUrl && ($iconData = $this->imageHelper->fetchFavicon($feedLogoUrl)) !== null) {
-            list($faviconUrl, $iconBlob) = $iconData;
+            [$faviconUrl, $iconBlob] = $iconData;
 
             $aspectRatio = $iconBlob->getWidth() / $iconBlob->getHeight();
 
@@ -158,7 +161,7 @@ class feed extends \spouts\spout {
         // else fallback to the favicon of the associated web page
         $htmlUrl = $this->getHtmlUrl();
         if ($htmlUrl && ($iconData = $this->imageHelper->fetchFavicon($htmlUrl, true)) !== null) {
-            list($faviconUrl, $iconBlob) = $iconData;
+            [$faviconUrl, $iconBlob] = $iconData;
             $this->logger->debug('icon: using feed homepage favicon: ' . $faviconUrl);
 
             return $faviconUrl;
@@ -167,7 +170,7 @@ class feed extends \spouts\spout {
         // else fallback to the favicon of the feed effective domain
         $feedUrl = $this->feed->getFeedUrl();
         if ($feedUrl && ($iconData = $this->imageHelper->fetchFavicon($feedUrl, true)) !== null) {
-            list($faviconUrl, $iconBlob) = $iconData;
+            [$faviconUrl, $iconBlob] = $iconData;
             $this->logger->debug('icon: using feed homepage favicon: ' . $faviconUrl);
 
             return $faviconUrl;

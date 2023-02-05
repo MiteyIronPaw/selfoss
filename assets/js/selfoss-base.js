@@ -31,6 +31,13 @@ var selfoss = {
      */
     entriesPage: null,
 
+    serviceWorkerInitialized: false,
+
+    /**
+     * Whether lightbox is open.
+     */
+    lightboxActive: new ValueListenable(false),
+
     windowLoaded: new Promise((resolve) => {
         window.addEventListener('load', () => resolve());
     }),
@@ -38,66 +45,50 @@ var selfoss = {
     /**
      * initialize application
      */
-    init: function() {
-        var storedConfig = localStorage.getItem('configuration');
-        var oldConfiguration = null;
+    init: async function() {
+        // Load off-line mode enabledness.
+        selfoss.db.enableOffline.update(window.localStorage.getItem('enableOffline') === 'true');
+
+        // Ignore stored config when off-line mode is disabled, since it is likely stale.
+        const storedConfig = selfoss.db.enableOffline.value ? localStorage.getItem('configuration') : null;
+        let oldConfiguration = null;
         try {
-            oldConfiguration = JSON.parse(storedConfig);
-        } catch (e) {
-            // We will try to obtain a new configuration anyway
+            oldConfiguration = storedConfig !== null ? JSON.parse(storedConfig) : null;
+        } catch {
+            // We will try to obtain a new configuration anyway.
         }
 
-        getInstanceInfo().then(({configuration}) => {
-            localStorage.setItem('configuration', JSON.stringify(configuration));
+        // Fall back to the last cached config on failure.
+        let configurationToUse = oldConfiguration;
+        try {
+            const { configuration } = await getInstanceInfo();
+            configurationToUse = configuration;
 
-            if (oldConfiguration && 'caches' in window) {
-                if (oldConfiguration.userCss !== configuration.userCss) {
-                    caches.delete('userCss').then(() =>
-                        caches.open('userCss').then(cache => cache.add(`user.css?v=${configuration.userCss}`))
-                    );
+            // We are on-line, prune the user files when changed.
+            if ('caches' in window) {
+                if (oldConfiguration === null || oldConfiguration.userCss !== configuration.userCss) {
+                    await caches.delete('userCss');
                 }
-                if (oldConfiguration.userJs !== configuration.userJs) {
-                    caches.delete('userJs').then(() =>
-                        caches.open('userJs').then(cache => cache.add(`user.js?v=${configuration.userJs}`))
-                    );
+                if (oldConfiguration === null || oldConfiguration.userJs !== configuration.userJs) {
+                    await caches.delete('userJs');
                 }
             }
-
-            selfoss.initMain(configuration);
-        }).catch(() => {
-            // on failure, we will try to use the last cached config
-            if (oldConfiguration) {
-                selfoss.initMain(oldConfiguration);
+        } finally {
+            if (configurationToUse) {
+                await selfoss.initMain(configurationToUse);
             } else {
                 // TODO: Add a more proper error page
                 document.body.innerHTML = selfoss.app._('error_configuration');
             }
-        });
+        }
     },
 
 
-    initMain: function(configuration) {
+    initMain: async function(configuration) {
         selfoss.config = configuration;
 
-        if ('serviceWorker' in navigator) {
-            selfoss.windowLoaded.then(function() {
-                navigator.serviceWorker.register(new URL('../selfoss-sw-offline.js', import.meta.url), { type: 'module' })
-                    .then(function(reg) {
-                        selfoss.listenWaitingSW(reg, function(reg) {
-                            selfoss.app.notifyNewVersion(function() {
-                                if (reg.waiting) {
-                                    reg.waiting.postMessage('skipWaiting');
-                                }
-                            });
-                        });
-                    });
-            });
-
-            navigator.serviceWorker.addEventListener('controllerchange',
-                function() {
-                    window.location.reload();
-                }
-            );
+        if (selfoss.db.enableOffline.value) {
+            selfoss.setupServiceWorker();
         }
 
         if (configuration.language !== null) {
@@ -127,24 +118,18 @@ var selfoss = {
         // init offline if supported
         selfoss.dbOffline.init();
 
-        selfoss.attachApp();
-
         if (configuration.authEnabled) {
             selfoss.loggedin.update(window.localStorage.getItem('onlineSession') == 'true');
         }
 
-        if (selfoss.isAllowedToRead()) {
-            selfoss.initUi();
-        } else {
-            selfoss.history.push('/sign/in');
-        }
+        selfoss.attachApp(configuration);
     },
 
 
     /**
      * Create basic DOM structure of the page.
      */
-    attachApp: function() {
+    attachApp: function(configuration) {
         document.getElementById('js-loading-message')?.remove();
 
         const mainUi = document.createElement('div');
@@ -155,32 +140,16 @@ var selfoss = {
         const basePath = (new URL(document.baseURI)).pathname.replace(/\/$/, '');
 
         ReactDOM.render(
-            createApp(basePath, (app) => {
-                selfoss.app = app;
+            createApp({
+                basePath,
+                appRef: (app) => {
+                    selfoss.app = app;
+                },
+                configuration,
             }),
             mainUi
         );
     },
-
-
-    initUiDone: false,
-
-
-    initUi: function() {
-        if (!selfoss.initUiDone) {
-            selfoss.initUiDone = true;
-
-            // read the html title configured
-            selfoss.htmlTitle = selfoss.config.htmlTitle;
-
-            // init shares
-            selfoss.shares.init(selfoss.config.share);
-
-            // init FancyBox
-            selfoss.initFancyBox();
-        }
-    },
-
 
     loggedin: new ValueListenable(false),
 
@@ -205,8 +174,8 @@ var selfoss = {
      * Try to log in using given credentials
      * @return Promise<undefined>
      */
-    login: function({username, password, offlineEnabled}) {
-        selfoss.db.enableOffline.update(offlineEnabled);
+    login: function({ configuration, username, password, enableOffline }) {
+        selfoss.db.enableOffline.update(enableOffline);
         window.localStorage.setItem('enableOffline', selfoss.db.enableOffline.value);
         if (!selfoss.db.enableOffline.value) {
             selfoss.db.clear();
@@ -216,34 +185,78 @@ var selfoss = {
             username,
             password
         };
-        return login(credentials).then((data) => {
-            if (data.success) {
-                selfoss.setSession();
-                selfoss.history.push('/');
-                // init offline if supported and not inited yet
+        return login(credentials).then(() => {
+            selfoss.setSession();
+            // init offline if supported and not inited yet
+            selfoss.dbOffline.init();
+            if ((!selfoss.db.storage || selfoss.db.broken) && selfoss.db.enableOffline.value) {
+                // Initialize database in offline mode when it has not been initialized yet or it got broken.
                 selfoss.dbOffline.init();
-                selfoss.initUi();
-                if ((!selfoss.db.storage || selfoss.db.broken) && selfoss.db.enableOffline.value) {
-                    // Initialize database in offline mode when it has not been initialized yet or it got broken.
-                    selfoss.dbOffline.init();
+
+                // Store config for off-line use.
+                localStorage.setItem('configuration', JSON.stringify(configuration));
+
+                // Cache user files manually since service worker is not aware of them.
+                if ('caches' in window) {
+                    caches.open('userCss').then((cache) => cache.add(`user.css?v=${configuration.userCss}`));
+                    caches.open('userJs').then((cache) => cache.add(`user.js?v=${configuration.userJs}`));
                 }
-                return Promise.resolve();
-            } else {
-                return Promise.reject(new Error(data.error));
+
+                selfoss.setupServiceWorker();
             }
         });
     },
 
-
-    logout: function() {
-        selfoss.clearSession();
-        if (!selfoss.config.publicMode) {
-            selfoss.history.push('/sign/in');
+    setupServiceWorker: function() {
+        if (!('serviceWorker' in navigator) || selfoss.serviceWorkerInitialized) {
+            return;
         }
 
-        logout().catch((error) => {
-            selfoss.app.showError(selfoss.app._('error_logout') + ' ' + error.message);
+        selfoss.serviceWorkerInitialized = true;
+
+        navigator.serviceWorker.addEventListener(
+            'controllerchange',
+            function() {
+                window.location.reload();
+            },
+        );
+
+        navigator.serviceWorker.register(new URL('../selfoss-sw-offline.js', import.meta.url), { type: 'module' })
+            .then(function(reg) {
+                selfoss.listenWaitingSW(reg, function(reg) {
+                    selfoss.app.notifyNewVersion(function() {
+                        if (reg.waiting) {
+                            reg.waiting.postMessage('skipWaiting');
+                        }
+                    });
+                });
+            });
+    },
+
+    logout: async function() {
+        selfoss.clearSession();
+
+        selfoss.db.clear(); // will not work after a failure, since storage is nulled
+        window.localStorage.clear();
+        if ('caches' in window) {
+            caches.keys().then(keys => keys.forEach(key => caches.delete(key)));
+        }
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            registrations.forEach(function(reg) {
+                reg.unregister();
+            });
         });
+        selfoss.serviceWorkerInitialized = false;
+
+        try {
+            await logout();
+
+            if (!selfoss.config.publicMode) {
+                selfoss.history.push('/sign/in');
+            }
+        } catch (error) {
+            selfoss.app.showError(selfoss.app._('error_logout') + ' ' + error.message);
+        }
     },
 
     /**
@@ -381,49 +394,6 @@ var selfoss = {
     },
 
 
-    /**
-     * anonymize links
-     *
-     * @return void
-     * @param parent element
-     */
-    anonymize: function(parent) {
-        var anonymizer = selfoss.config.anonymizer;
-        if (anonymizer !== null) {
-            parent.querySelectorAll('a').forEach((link) => {
-                if (typeof link.getAttribute('href') !== 'undefined' && !link.getAttribute('href').startsWith(anonymizer)) {
-                    link.setAttribute('href', anonymizer + link.getAttribute('href'));
-                }
-            });
-        }
-    },
-
-
-    /**
-     * Setup fancyBox image viewer
-     * @param content element
-     * @param int
-     */
-    setupFancyBox: function(content, id) {
-        // Close existing fancyBoxes
-        $.fancybox.close();
-        let images = content.querySelectorAll('a[href$=".jpg"], a[href$=".jpeg"], a[href$=".png"], a[href$=".gif"], a[href$=".jpg:large"], a[href$=".jpeg:large"], a[href$=".png:large"], a[href$=".gif:large"]');
-        images.forEach((el) => {
-            el.setAttribute('data-fancybox', 'gallery-' + id);
-            $(el).off('click');
-        });
-        images.forEach((el) => el.setAttribute('data-type', 'image'));
-    },
-
-
-    /**
-     * Initialize FancyBox globally
-     */
-    initFancyBox: function() {
-        $.fancybox.defaults.hash = false;
-    },
-
-
     handleAjaxError: function(error, tryOffline = true) {
         if (!(error instanceof HttpError || error instanceof TimeoutError)) {
             return Promise.reject(error);
@@ -457,25 +427,6 @@ var selfoss = {
             reg.addEventListener('updatefound', awaitStateChange);
         }
     },
-
-
-    /*
-     * Handy function that can be used for debugging purposes.
-     */
-    nukeLocalData: function() {
-        selfoss.db.clear(); // will not work after a failure, since storage is nulled
-        window.localStorage.clear();
-        if ('caches' in window) {
-            caches.keys().then(keys => keys.forEach(key => caches.delete(key)));
-        }
-        navigator.serviceWorker.getRegistrations().then(function(registrations) {
-            registrations.forEach(function(reg) {
-                reg.unregister();
-            });
-        });
-        selfoss.logout();
-    },
-
 
     // Include helpers for user scripts.
     ajax

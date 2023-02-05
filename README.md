@@ -1,4 +1,4 @@
-# selfoss 2.19-SNAPSHOT
+# selfoss 2.20-SNAPSHOT
 
 selfoss is a multipurpose RSS reader and feed aggregation web application. It allows you to easily follow updates from different web sites, social networks and other platforms, all in single place. It is written in PHP, allowing you to run it basically anywhere.
 
@@ -21,7 +21,7 @@ For more information visit our [web site](https://selfoss.aditu.de).
 
 If you obtained selfoss using Git, some more steps will be required. See the [development](#development) section.
 
-For further questions or on any problem use our support forum: https://selfoss.aditu.de/forum/
+For further questions or on any problem use our support forum: https://forum.selfoss.aditu.de/
 
 
 ## Configuration
@@ -51,7 +51,7 @@ For further questions or on any problem use our support forum: https://selfoss.a
 ## Support
 
 * [Issue tracker](https://github.com/fossar/selfoss/issues) for reporting problems and requesting new features
-* [Forum](https://selfoss.aditu.de/forum/) for general questions about usage
+* [Forum](https://forum.selfoss.aditu.de/) for general questions about usage
 * [Chat on Gitter](https://gitter.im/fossar/selfoss) (or [`#selfoss:matrix.org` mirror](https://matrix.to/#/#selfoss:matrix.org)) for discussing selfoss development or just about anything
 
 
@@ -62,7 +62,7 @@ Selfoss supports importing OPML files. Find the OPML export in the old applicati
 
 ## Third-party Apps
 
-We recommend [Reader For Selfoss](https://github.com/aminecmi/readerforselfoss) for Android devices.
+We recommend [Reader For Selfoss](https://f-droid.org/packages/bou.amine.apps.readerforselfossv2.android) for Android devices.
 
 
 ## Development
@@ -91,14 +91,13 @@ Special thanks to the great programmers of these libraries used by selfoss:
 
 * [FatFree PHP Framework](https://fatfreeframework.com/)
 * [SimplePie](http://simplepie.org/)
-* [jQuery](https://jquery.com/)
 * [WideImage](http://wideimage.sourceforge.net/)
 * [htmLawed](http://www.bioinformatics.org/phplabware/internal_utilities/htmLawed/)
 * [PHP Universal Feed Generator](https://github.com/ajaxray/FeedWriter)
 * [Elphin IcoFileLoader](https://github.com/lordelph/icofileloader)
-* [jQuery hotkeys](https://github.com/tzuryby/jquery.hotkeys)
 * [Graby](https://github.com/j0k3r/graby)
 * [FullTextRSS filters](http://help.fivefilters.org/customer/portal/articles/223153-site-patterns)
+* [yet-another-react-lightbox](https://github.com/igordanchenko/yet-another-react-lightbox)
 
 Icon made by http://blackbooze.com/
 

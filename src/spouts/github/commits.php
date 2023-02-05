@@ -77,7 +77,7 @@ class commits extends \spouts\spout {
         $http = $this->webClient->getHttpClient();
         $response = $http->get($jsonUrl);
         $items = json_decode((string) $response->getBody(), true);
-        $this->items = $items === null ? [] : $items;
+        $this->items = $items ?? [];
 
         $this->title = "Recent Commits to {$params['repo']}:{$params['branch']}";
     }
@@ -109,7 +109,7 @@ class commits extends \spouts\spout {
             $link = $item['html_url'];
             // Appears to be ISO 8601.
             $date = new \DateTimeImmutable($item['commit']['author']['date']);
-            $author = null;
+            $author = $item['commit']['author']['name'];
 
             yield new Item(
                 $id,

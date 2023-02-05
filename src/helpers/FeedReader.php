@@ -2,6 +2,7 @@
 
 namespace helpers;
 
+use Psr\SimpleCache\CacheInterface;
 use SimplePie\SimplePie;
 
 /**
@@ -11,17 +12,12 @@ class FeedReader {
     /** @var SimplePie */
     private $simplepie;
 
-    /**
-     * @param ?string $cacheLocation
-     * @param int $cacheTimeout
-     */
-    public function __construct(SimplePie $simplepie, WebClient $webClient, $cacheLocation = null, $cacheTimeout = 1800) {
+    public function __construct(SimplePie $simplepie, WebClient $webClient, ?CacheInterface $cache = null) {
         $this->simplepie = $simplepie;
 
         // initialize simplepie feed loader
-        if ($cacheLocation !== null) {
-            $this->simplepie->set_cache_location($cacheLocation);
-            $this->simplepie->set_cache_duration($cacheTimeout);
+        if ($cache !== null) {
+            $this->simplepie->set_cache($cache);
         }
 
         // abuse set_curl_options since there is no sane way to pass data to SimplePie\File
@@ -30,7 +26,7 @@ class FeedReader {
         ]);
 
         $this->simplepie->set_file_class(SimplePieFileGuzzle::class);
-        $this->simplepie->set_autodiscovery_level(SIMPLEPIE_LOCATOR_AUTODISCOVERY | SIMPLEPIE_LOCATOR_LOCAL_EXTENSION | SIMPLEPIE_LOCATOR_LOCAL_BODY);
+        $this->simplepie->set_autodiscovery_level(SimplePie::LOCATOR_AUTODISCOVERY | SimplePie::LOCATOR_LOCAL_EXTENSION | SimplePie::LOCATOR_LOCAL_BODY);
         $this->simplepie->set_useragent($webClient->getUserAgent());
     }
 
@@ -39,7 +35,7 @@ class FeedReader {
      *
      * @param string $url URL of the feed
      *
-     * @return array{items: \SimplePie_Item[], htmlUrl: string, title: ?string}
+     * @return array{items: \SimplePie\Item[], htmlUrl: string, title: ?string}
      */
     public function load($url) {
         @$this->simplepie->set_feed_url($url);
@@ -48,7 +44,7 @@ class FeedReader {
 
         // on error retry with force_feed
         if (@$this->simplepie->error()) {
-            @$this->simplepie->set_autodiscovery_level(SIMPLEPIE_LOCATOR_NONE);
+            @$this->simplepie->set_autodiscovery_level(SimplePie::LOCATOR_NONE);
             @$this->simplepie->force_feed(true);
             @$this->simplepie->init();
         }
@@ -62,7 +58,8 @@ class FeedReader {
             // save fetched items
             'items' => $this->simplepie->get_items(),
             'htmlUrl' => htmlspecialchars_decode((string) $this->simplepie->get_link(), ENT_COMPAT), // SimplePie sanitizes URLs
-            'title' => $this->simplepie->get_title(),
+            // Atom feeds can contain HTML in titles, strip tags and convert to text.
+            'title' => htmlspecialchars_decode(strip_tags($this->simplepie->get_title())),
         ];
     }
 

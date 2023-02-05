@@ -15,12 +15,12 @@ $router->get('/api/about', function() use ($dice) {
     // json
     $dice->create(controllers\About::class)->about();
 });
-$router->get('/password', function() use ($dice) {
-    // html
-    $dice->create(controllers\Authentication::class)->password();
+$router->post('/api/private/hash-password', function() use ($dice) {
+    // json
+    $dice->create(controllers\Helpers\HashPassword::class)->hash();
 });
 $router->get('/login', function() use ($dice) {
-    // json
+    // json, deprecated
     $dice->create(controllers\Authentication::class)->login();
 });
 $router->post('/login', function() use ($dice) {
@@ -28,6 +28,10 @@ $router->post('/login', function() use ($dice) {
     $dice->create(controllers\Authentication::class)->login();
 });
 $router->get('/logout', function() use ($dice) {
+    // json, deprecated
+    $dice->create(controllers\Authentication::class)->logout();
+});
+$router->delete('/api/session/current', function() use ($dice) {
     // json
     $dice->create(controllers\Authentication::class)->logout();
 });
@@ -121,7 +125,7 @@ $router->delete('/source/([0-9]+)', function($id) use ($dice) {
     $dice->create(controllers\Sources::class)->remove($id);
 });
 $router->post('/source/delete/([0-9]+)', function($id) use ($dice) {
-    // json
+    // json, deprecated
     $dice->create(controllers\Sources::class)->remove($id);
 });
 $router->post('/source/([0-9]+)/update', function($id) use ($dice) {
@@ -152,7 +156,7 @@ $router->get('/opmlexport', function() use ($dice) {
 });
 
 // Client side routes need to be directed to index.html.
-$router->get('/sign/in|/manage/sources(/add)?|/(newest|unread|starred)(/(all|tag-[^/]+|source-[0-9]+)(/[0-9]+)?)?', function() use ($dice) {
+$router->get('/sign/in|/password|/manage/sources(/add)?|/(newest|unread|starred)(/(all|tag-[^/]+|source-[0-9]+)(/[0-9]+)?)?', function() use ($dice) {
     // html
     $dice->create(controllers\Index::class)->home();
 });

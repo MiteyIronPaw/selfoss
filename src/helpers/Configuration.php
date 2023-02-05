@@ -12,7 +12,7 @@ use ReflectionClass;
  */
 class Configuration {
     /** @var string[] List of config values that should have variables interpolated. */
-    const INTERPOLATED_PROPERTIES = [
+    public const INTERPOLATED_PROPERTIES = [
         'dbFile',
         'loggerDestination',
         'cache',
@@ -119,8 +119,8 @@ class Configuration {
     /** @var bool */
     public $autoStreamMore = true;
 
-    /** @var ?string */
-    public $anonymizer = null;
+    /** @var bool */
+    public $openInBackgroundTab = false;
 
     /** @var string */
     public $share = 'atfpde';
@@ -171,7 +171,7 @@ class Configuration {
     public function __construct($configPath = null, $environment = []) {
         // read config.ini, if it exists
         if ($configPath !== null && file_exists($configPath)) {
-            $config = parse_ini_file($configPath);
+            $config = parse_ini_file($configPath, false, INI_SCANNER_RAW);
             if ($config === false) {
                 throw new Exception('Error loading config.ini');
             }

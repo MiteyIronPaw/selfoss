@@ -8,6 +8,9 @@ use Monolog\Handler\ErrorLogHandler;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Logger;
+use Psr\SimpleCache\CacheInterface;
+use Symfony\Component\Cache\Adapter\FilesystemAdapter;
+use Symfony\Component\Cache\Psr16Cache;
 
 require __DIR__ . '/constants.php';
 
@@ -38,10 +41,7 @@ error_reporting(0);
 
 $f3 = Base::instance();
 
-// Disable deprecation warnings.
-// Dice uses ReflectionParameter::getClass(), which is deprecated in PHP 8
-// but we have not set an error handler yet because it needs a Logger instantiated by Dice.
-error_reporting(E_ALL & ~E_DEPRECATED);
+error_reporting(E_ALL);
 
 $f3->set('AUTOLOAD', false);
 $f3->set('BASEDIR', BASEDIR);
@@ -58,21 +58,19 @@ $substitutions = [
     'substitutions' => [
         // Instantiate configuration container.
         Configuration::class => [
-            'instance' => function() use ($configuration) {
+            Dice::INSTANCE => function() use ($configuration) {
                 return $configuration;
             },
             'shared' => true,
         ],
 
         // Choose database implementation based on config
-        daos\DatabaseInterface::class => ['instance' => 'daos\\' . $configuration->dbType . '\\Database'],
-        daos\ItemsInterface::class => ['instance' => 'daos\\' . $configuration->dbType . '\\Items'],
-        daos\SourcesInterface::class => ['instance' => 'daos\\' . $configuration->dbType . '\\Sources'],
-        daos\TagsInterface::class => ['instance' => 'daos\\' . $configuration->dbType . '\\Tags'],
+        daos\DatabaseInterface::class => [Dice::INSTANCE => 'daos\\' . $configuration->dbType . '\\Database'],
+        daos\ItemsInterface::class => [Dice::INSTANCE => 'daos\\' . $configuration->dbType . '\\Items'],
+        daos\SourcesInterface::class => [Dice::INSTANCE => 'daos\\' . $configuration->dbType . '\\Sources'],
+        daos\TagsInterface::class => [Dice::INSTANCE => 'daos\\' . $configuration->dbType . '\\Tags'],
 
-        Dice::class => ['instance' => function() use ($dice) {
-            return $dice;
-        }],
+        Dice::class => [Dice::INSTANCE => Dice::SELF],
     ],
 ];
 
@@ -80,19 +78,19 @@ $shared = array_merge($substitutions, [
     'shared' => true,
 ]);
 
-$dice->addRule(Bramus\Router\Router::class, $shared);
-$dice->addRule(helpers\Authentication::class, $shared);
+$dice = $dice->addRule(Bramus\Router\Router::class, $shared);
+$dice = $dice->addRule(helpers\Authentication::class, $shared);
 
 // Database bridges
-$dice->addRule(daos\Items::class, $shared);
-$dice->addRule(daos\Sources::class, $shared);
-$dice->addRule(daos\Tags::class, $shared);
+$dice = $dice->addRule(daos\Items::class, $shared);
+$dice = $dice->addRule(daos\Sources::class, $shared);
+$dice = $dice->addRule(daos\Tags::class, $shared);
 
 // Database implementation
-$dice->addRule(daos\DatabaseInterface::class, $shared);
-$dice->addRule(daos\ItemsInterface::class, $shared);
-$dice->addRule(daos\SourcesInterface::class, $shared);
-$dice->addRule(daos\TagsInterface::class, $shared);
+$dice = $dice->addRule(daos\DatabaseInterface::class, $shared);
+$dice = $dice->addRule(daos\ItemsInterface::class, $shared);
+$dice = $dice->addRule(daos\SourcesInterface::class, $shared);
+$dice = $dice->addRule(daos\TagsInterface::class, $shared);
 
 if ($configuration->isChanged('dbSocket') && $configuration->isChanged('dbHost')) {
     boot_error('You cannot set both `db_socket` and `db_host` options.' . PHP_EOL);
@@ -145,7 +143,7 @@ if ($configuration->dbType === 'sqlite') {
         boot_error('Using PostgreSQL database requires pdo_pgsql PHP extension. Please make sure you have it installed and enabled.');
     }
     // PostgreSQL uses host key for socket.
-    $host = $configuration->dbSocket !== null ? $configuration->dbSocket : $configuration->dbHost;
+    $host = $configuration->dbSocket ?? $configuration->dbHost;
     $port = $configuration->dbPort;
     $database = $configuration->dbDatabase;
 
@@ -196,47 +194,59 @@ if ($configuration->dbType === 'sqlite') {
     ]);
 }
 
-$dice->addRule(DatabaseConnection::class, $sqlParams);
+$dice = $dice->addRule(DatabaseConnection::class, $sqlParams);
 
-$dice->addRule('$iconStorageBackend', [
+$dice = $dice->addRule('$iconStorageBackend', [
     'instanceOf' => helpers\Storage\FileStorage::class,
     'constructParams' => [
         $configuration->datadir . '/favicons',
     ],
 ]);
 
-$dice->addRule(helpers\IconStore::class, array_merge($shared, [
+$dice = $dice->addRule(helpers\IconStore::class, array_merge($shared, [
     'constructParams' => [
-        ['instance' => '$iconStorageBackend'],
+        [Dice::INSTANCE => '$iconStorageBackend'],
     ],
 ]));
 
-$dice->addRule('$thumbnailStorageBackend', [
+$dice = $dice->addRule('$thumbnailStorageBackend', [
     'instanceOf' => helpers\Storage\FileStorage::class,
     'constructParams' => [
         $configuration->datadir . '/thumbnails',
     ],
 ]);
 
-$dice->addRule(helpers\ThumbnailStore::class, array_merge($shared, [
+$dice = $dice->addRule(helpers\ThumbnailStore::class, array_merge($shared, [
     'constructParams' => [
-        ['instance' => '$thumbnailStorageBackend'],
+        [Dice::INSTANCE => '$thumbnailStorageBackend'],
     ],
 ]));
 
 // Fallback rule
-$dice->addRule('*', $substitutions);
+$dice = $dice->addRule('*', $substitutions);
 
-$dice->addRule(Logger::class, [
+$dice = $dice->addRule(Logger::class, [
     'shared' => true,
     'constructParams' => ['selfoss'],
 ]);
 
-$dice->addRule(helpers\FeedReader::class, [
+$dice = $dice->addRule('$fileStorage', array_merge($shared, [
+    'instanceOf' => FilesystemAdapter::class,
     'constructParams' => [
+        // namespace
+        'selfoss',
+        // lifetime
+        1800,
+        // directory
         $configuration->cache,
     ],
-]);
+]));
+$dice = $dice->addRule(CacheInterface::class, array_merge($shared, [
+    'instanceOf' => Psr16Cache::class,
+    'constructParams' => [
+        [Dice::INSTANCE => '$fileStorage'],
+    ],
+]));
 
 // init logger
 $log = $dice->create(Logger::class);
@@ -261,7 +271,7 @@ if ($configuration->loggerLevel === 'NONE') {
 $log->pushHandler($handler);
 
 if (isset($startup_error)) {
-    $log->warn('PHP likely encountered a startup error: ', [$startup_error]);
+    $log->warning('PHP likely encountered a startup error: ', [$startup_error]);
 }
 
 // init error handling

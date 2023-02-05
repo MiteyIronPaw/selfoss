@@ -63,9 +63,6 @@ class Import {
             if ($opml['error'] === UPLOAD_ERR_NO_FILE) {
                 throw new \Exception('No file uploaded!');
             }
-            if (!in_array($opml['type'], ['application/xml', 'text/xml', 'text/x-opml+xml', 'text/x-opml'], true)) {
-                throw new \Exception('Unsupported file type: ' . $opml['type']);
-            }
 
             $this->logger->debug('start OPML import ');
 
@@ -73,7 +70,26 @@ class Import {
                 throw new \Exception('Missing SimpleXML PHP extension. Please install/enable it as described on https://www.php.net/manual/en/simplexml.installation.php');
             }
 
-            $subs = simplexml_load_file($opml['tmp_name']);
+            $subs = false;
+            $previousUseErrors = libxml_use_internal_errors(true);
+            try {
+                $subs = simplexml_load_file($opml['tmp_name']);
+
+                if ($subs === false) {
+                    // When parsing fails, check MIME type supplied by browser since it is possible user supplied file of a wrong type.
+                    if (!in_array($opml['type'], ['application/xml', 'text/xml', 'text/x-opml+xml', 'text/x-opml'], true)) {
+                        throw new \Exception('Unsupported file type: ' . $opml['type']);
+                    }
+
+                    // If type is correct, check the error reported by parser.
+                    $error = libxml_get_last_error();
+                    $errorDetail = $error !== false ? ': ' . $error->message : '';
+
+                    throw new \Exception('Unable to parse OPML file' . $errorDetail);
+                }
+            } finally {
+                libxml_use_internal_errors($previousUseErrors);
+            }
             $errors = $this->processGroup($subs->body);
 
             // cleanup tags
@@ -92,9 +108,6 @@ class Import {
                 $messages[] = 'Success! ' . $amount . ' feed' . ($amount !== 1 ? 's have' : ' has') . ' been imported.';
             }
         } catch (\Throwable $e) {
-            $messages[] = $e->getMessage();
-        } catch (\Exception $e) {
-            // For PHP 5
             $messages[] = $e->getMessage();
         }
 
@@ -120,8 +133,13 @@ class Import {
 
         $xml->registerXPathNamespace('selfoss', 'https://selfoss.aditu.de/');
 
-        // tags are the words of the outline parent
+        // In Google Reader (and now Feedly), folders/tags/labels were just the text of the outline parent.
+        // Now, it is not valid for an <outline> element with the default “text” type to use the “title” attribute
+        // but both Google Reader and Feedly duplicate the “text” attribute as “title” so it seems to be common.
+        // Feedly seems to prefer “title” for both category names and feed names.
+        // We will do the same in case someone mistakenly exports the “title” and forgets about “text”.
         $title = (string) $xml->attributes()->title;
+        $title = $title ?: (string) $xml->attributes()->text;
         if ($title !== '' && $title !== '/') {
             $tags[] = $title;
             // for new tags, try to import tag color, otherwise use random color
@@ -169,13 +187,17 @@ class Import {
         $nsattrs = $xml->attributes('selfoss', true);
 
         // description
-        $title = (string) $attrs->text;
+        // Google Reader (and now Feedly) duplicate the feed title in “title” and “text” attributes.
+        // Prefer “title” as it is optional and it might contain more detailed label.
+        $title = (string) $attrs->title;
         if ($title === '') {
-            $title = (string) $attrs->title;
+            $title = (string) $attrs->text;
         }
 
         // RSS URL
-        $data['url'] = (string) $attrs->xmlUrl;
+        $data = [
+            'url' => (string) $attrs->xmlUrl,
+        ];
 
         // set spout for new item
         if ($nsattrs->spout || $nsattrs->params) {

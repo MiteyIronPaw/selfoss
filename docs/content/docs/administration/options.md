@@ -1,6 +1,6 @@
 +++
 title = "Configuration options"
-weight = 100
+weight = 31
 +++
 
 selfoss offers the following configuration parameters. You can set the config parameters in the `config.ini` file.
@@ -154,7 +154,13 @@ set this to `1` to automatically collapse an item when another one is opened.
 ### `auto_stream_more`
 <div class="config-option">
 
-set this to `0` to disable automatic loading of more items when you scroll down. With `1`, a click on a button is required instead.
+set this to `0` to disable automatic loading of more items when you scroll down. Click a button at the bottom of the page will be required instead.
+</div>
+
+### `open_in_background_tab`
+<div class="config-option">
+
+set this to `1` to try to make <kbd>v</kbd> shortcut open articles in new background tab. This [does not work in Chromium based browsers](https://crbug.com/431335).
 </div>
 
 ### `language`
@@ -173,6 +179,7 @@ set `0` or leave empty for auto detection (browser language) or use one of the f
 * Finnish: `fi`
 * French: `fr`
 * French (Canada): `fr-CA`
+* Galician: `gl`
 * German: `de`
 * Hebrew: `he`
 * Hungarian: `hu`
@@ -191,12 +198,6 @@ set `0` or leave empty for auto detection (browser language) or use one of the f
 * Swedish: `sv`
 * Turkish: `tr`
 * Ukrainian: `uk`
-</div>
-
-### `anonymizer`
-<div class="config-option">
-
-Set here your anonymizer service url. e.g.: `anonymizer=https://anonym.to/?`
 </div>
 
 ### `allow_public_update_access`

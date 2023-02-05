@@ -5,8 +5,11 @@ import * as ajax from '../helpers/ajax';
  */
 export function update(id, values) {
     return ajax.post(`source/${id}`, {
-        body: new URLSearchParams(values),
-        failOnHttpErrors: false
+        headers: {
+            'content-type': 'application/json; charset=utf-8'
+        },
+        body: JSON.stringify(values),
+        failOnHttpErrors: false,
     }).promise
         .then(ajax.rejectUnless(response => response.ok || response.status === 400))
         .then(response => response.json());
@@ -34,7 +37,7 @@ export function refreshAll() {
  * Removes source with given ID.
  */
 export function remove(id) {
-    return ajax.post(`source/delete/${id}`).promise;
+    return ajax.delete_(`source/${id}`).promise;
 }
 
 /**

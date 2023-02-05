@@ -2,6 +2,7 @@ import React from 'react';
 import { useRef } from 'react';
 import { Button as MenuButton, Wrapper as MenuWrapper, Menu, MenuItem } from 'react-aria-menubutton';
 import { useHistory, useLocation } from 'react-router-dom';
+import { fadeOut } from '@siteparts/show-hide-effects';
 import { makeEntriesLinkLocation } from '../helpers/uri';
 import PropTypes from 'prop-types';
 import nullable from 'prop-types-nullable';
@@ -14,6 +15,8 @@ import * as sourceRequests from '../requests/sources';
 import { LoadingState } from '../requests/LoadingState';
 import { LocalizationContext } from '../helpers/i18n';
 
+const FAST_DURATION_MS = 200;
+
 // cancel source editing
 function handleCancel({
     source,
@@ -24,12 +27,18 @@ function handleCancel({
     const id = source.id;
 
     if (id.toString().startsWith('new-')) {
-        $(sourceElem.current).fadeOut('fast', () => {
-            // Remove the source from this page’s model.
-            setSources((sources) =>
-                sources.filter((source) => source.id !== id)
-            );
-        });
+        fadeOut(
+            sourceElem.current,
+            {
+                duration: FAST_DURATION_MS,
+                complete: () => {
+                    // Remove the source from this page’s model.
+                    setSources((sources) =>
+                        sources.filter((source) => source.id !== id)
+                    );
+                }
+            },
+        );
     } else {
         // Hide the input form.
         setEditedSource(null);
@@ -54,10 +63,7 @@ function handleSave({
     setSourceActionLoading(true);
 
     const newSource = source;
-    const { id, tags, params, ...restSource } = source;
-
-    // Build params for the API request.
-    let values = Object.entries({ ...restSource, ...params });
+    const { id, tags, filter, params, ...restSource } = source;
 
     // Make tags into a list.
     const tagsList = tags
@@ -67,7 +73,12 @@ function handleSave({
             .filter((tag) => tag !== '')
         : [];
 
-    tagsList.forEach((tag) => values.push(['tags[]', tag]));
+    const values = {
+        ...restSource,
+        ...params,
+        tags: tagsList,
+        filter: filter || null,
+    };
 
     sourceRequests
         .update(id, values)
@@ -153,12 +164,18 @@ function handleDelete({
     sourceRequests
         .remove(id)
         .then(() => {
-            $(sourceElem.current).fadeOut('fast', () => {
-                // Remove the source from this page’s model.
-                setSources((sources) =>
-                    sources.filter((source) => source.id !== id)
-                );
-            });
+            fadeOut(
+                sourceElem.current,
+                {
+                    duration: FAST_DURATION_MS,
+                    complete: () => {
+                        // Remove the source from this page’s model.
+                        setSources((sources) =>
+                            sources.filter((source) => source.id !== id)
+                        );
+                    }
+                },
+            );
 
             // Reload tags and remove source from navigation.
             selfoss.reloadTags();
