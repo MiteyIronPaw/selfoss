@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace helpers;
 
 /**
@@ -13,18 +15,20 @@ class Search {
     /**
      * return search terms as array
      *
-     * @param string $search
-     *
      * @return string[] search terms
      */
-    public static function splitTerms($search) {
+    public static function splitTerms(string $search): array {
         if (strlen($search) === 0) {
             return [];
         }
 
-        //split search terms by space (but save it inside quotes)...
-        return array_filter(str_getcsv(trim($search), ' '), function($item) {
-            return $item !== '';
-        });
+        // Split search terms by space (but save it inside quotes)...
+        /** @var string[] */ // For PHPStan: The only case where null appears is array{null} when the $string is empty.
+        $parts = str_getcsv(trim($search), ' ');
+
+        return array_filter(
+            $parts,
+            fn(string $item): bool => $item !== ''
+        );
     }
 }

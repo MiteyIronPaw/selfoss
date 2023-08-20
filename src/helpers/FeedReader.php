@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace helpers;
 
 use Psr\SimpleCache\CacheInterface;
@@ -9,10 +11,13 @@ use SimplePie\SimplePie;
  * Helper class for obtaining feeds
  */
 class FeedReader {
-    /** @var SimplePie */
-    private $simplepie;
+    private SimplePie $simplepie;
 
-    public function __construct(SimplePie $simplepie, WebClient $webClient, ?CacheInterface $cache = null) {
+    public function __construct(
+        SimplePie $simplepie,
+        WebClient $webClient,
+        ?CacheInterface $cache = null
+    ) {
         $this->simplepie = $simplepie;
 
         // initialize simplepie feed loader
@@ -37,38 +42,41 @@ class FeedReader {
      *
      * @return array{items: \SimplePie\Item[], htmlUrl: string, title: ?string}
      */
-    public function load($url) {
+    public function load(string $url): array {
         @$this->simplepie->set_feed_url($url);
         // fetch items
         @$this->simplepie->init();
 
         // on error retry with force_feed
-        if (@$this->simplepie->error()) {
+        if ($this->simplepie->error() !== null) {
             @$this->simplepie->set_autodiscovery_level(SimplePie::LOCATOR_NONE);
             @$this->simplepie->force_feed(true);
             @$this->simplepie->init();
         }
 
         // check for error
-        if (@$this->simplepie->error()) {
-            throw new \Exception($this->simplepie->error());
+        /** @var ?string $error */ // For PHPStan: This can only be an array in multifeed mode, which we do not use.
+        $error = $this->simplepie->error();
+        if ($error !== null) {
+            throw new \Exception($error);
         }
+
+        /** @var \SimplePie\Item[] $items */ // SimplePie considers this nullable for some reason.
+        $items = $this->simplepie->get_items();
 
         return [
             // save fetched items
-            'items' => $this->simplepie->get_items(),
+            'items' => $items,
             'htmlUrl' => htmlspecialchars_decode((string) $this->simplepie->get_link(), ENT_COMPAT), // SimplePie sanitizes URLs
             // Atom feeds can contain HTML in titles, strip tags and convert to text.
-            'title' => htmlspecialchars_decode(strip_tags($this->simplepie->get_title())),
+            'title' => htmlspecialchars_decode(strip_tags($this->simplepie->get_title() ?? '')),
         ];
     }
 
     /**
      * Get the URL of the feed’s logo.
-     *
-     * @return ?string
      */
-    public function getImageUrl() {
+    public function getImageUrl(): ?string {
         $raw = $this->simplepie->get_image_url();
 
         return $raw === null ? $raw : htmlspecialchars_decode($raw, ENT_COMPAT); // SimplePie sanitizes URLs
@@ -76,10 +84,8 @@ class FeedReader {
 
     /**
      * Get the URL of the feed
-     *
-     * @return ?string
      */
-    public function getFeedUrl() {
+    public function getFeedUrl(): ?string {
         // SimplePie sanitizes URLs but it unescapes ampersands here.
         // Since double quotes and angle brackets are excluded from URIs,
         // we need not worry about them and consider this unescaped.
@@ -87,9 +93,6 @@ class FeedReader {
         return $this->simplepie->subscribe_url();
     }
 
-    /**
-     * @return void
-     */
     public function __destruct() {
         $this->simplepie->__destruct();
     }

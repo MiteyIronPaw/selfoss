@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace helpers\Storage;
 
 use Monolog\Logger;
@@ -8,30 +10,20 @@ use Monolog\Logger;
  * Simple file storage.
  */
 class FileStorage {
-    /** @var Logger */
-    private $logger;
+    private Logger $logger;
 
-    /** @var string Directory where the files will be stored */
-    private $directory;
+    /** Directory where the files will be stored */
+    private string $directory;
 
-    /**
-     * @param string $directory
-     */
-    public function __construct(Logger $logger, $directory) {
+    public function __construct(Logger $logger, string $directory) {
         $this->logger = $logger;
         $this->directory = $directory;
     }
 
     /**
      * Store given blob with type $extension as URL.
-     *
-     * @param string $url
-     * @param string $extension
-     * @param string $blob
-     *
-     * @return ?string
      */
-    public function store($url, $extension, $blob) {
+    public function store(string $url, string $extension, string $blob): ?string {
         $filename = md5($url) . '.' . $extension;
         $path = $this->directory . '/' . $filename;
         $written = @file_put_contents($path, $blob);
@@ -49,17 +41,16 @@ class FileStorage {
      * Delete all files except for requested ones.
      *
      * @param callable(string):bool $shouldKeep
-     *
-     * @return void
      */
-    public function cleanup($shouldKeep) {
-        $itemPath = $this->directory . '/';
+    public function cleanup(callable $shouldKeep): void {
         $undeleted = [];
-        foreach (scandir($itemPath) as $file) {
-            if (is_file($itemPath . $file) && $file !== '.htaccess') {
-                if (!$shouldKeep($file)) {
-                    if (!@unlink($itemPath . $file)) {
-                        $undeleted[] = $itemPath . $file;
+        foreach (new \DirectoryIterator($this->directory) as $fileInfo) {
+            $name = $fileInfo->getFilename();
+            if ($fileInfo->isFile() && $name !== '.htaccess') {
+                if (!$shouldKeep($name)) {
+                    $path = $fileInfo->getPathname();
+                    if (!@unlink($path)) {
+                        $undeleted[] = $path;
                     }
                 }
             }

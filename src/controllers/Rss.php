@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace controllers;
 
 use daos\ItemOptions;
@@ -16,23 +18,12 @@ use helpers\View;
  * @author     Tobias Zeising <tobias.zeising@aditu.de>
  */
 class Rss {
-    /** @var Authentication authentication helper */
-    private $authentication;
-
-    /** @var Configuration configuration */
-    private $configuration;
-
-    /** @var RSS2 feed writer */
-    private $feedWriter;
-
-    /** @var \daos\Items items */
-    private $itemsDao;
-
-    /** @var \daos\Sources sources */
-    private $sourcesDao;
-
-    /** @var View view helper */
-    private $view;
+    private Authentication $authentication;
+    private Configuration $configuration;
+    private RSS2 $feedWriter;
+    private \daos\Items $itemsDao;
+    private \daos\Sources $sourcesDao;
+    private View $view;
 
     public function __construct(Authentication $authentication, Configuration $configuration, RSS2 $feedWriter, \daos\Items $itemsDao, \daos\Sources $sourcesDao, View $view) {
         $this->authentication = $authentication;
@@ -45,10 +36,8 @@ class Rss {
 
     /**
      * rss feed
-     *
-     * @return void
      */
-    public function rss() {
+    public function rss(): void {
         $this->authentication->needsLoggedInOrPublicMode();
 
         $this->feedWriter->setTitle($this->configuration->rssTitle);
@@ -65,6 +54,7 @@ class Rss {
 
         // get items
         $newestEntryDate = null;
+        $itemsToMark = [];
         foreach ($this->itemsDao->get($options) as $item) {
             if ($newestEntryDate === null) {
                 $newestEntryDate = $item['datetime'];
@@ -73,7 +63,7 @@ class Rss {
 
             // get Source Name
             if ($item['source'] != $lastSourceId) {
-                foreach ($this->sourcesDao->get() as $source) {
+                foreach ($this->sourcesDao->getAll() as $source) {
                     if ($source['id'] == $item['source']) {
                         $lastSourceId = $source['id'];
                         $lastSourceName = $source['title'];
@@ -97,12 +87,12 @@ class Rss {
             }
 
             $this->feedWriter->addItem($newItem);
-            $lastid = $item['id'];
+            $itemsToMark[] = $item['id'];
+        }
 
-            // mark as read
-            if ($this->configuration->rssMarkAsRead && $lastid !== null) {
-                $this->itemsDao->mark($lastid);
-            }
+        // mark as read
+        if ($this->configuration->rssMarkAsRead && count($itemsToMark) > 0) {
+            $this->itemsDao->mark($itemsToMark);
         }
 
         if ($newestEntryDate === null) {
@@ -113,12 +103,7 @@ class Rss {
         $this->feedWriter->printFeed();
     }
 
-    /**
-     * @param string $title
-     *
-     * @return string
-     */
-    private function sanitizeTitle($title) {
+    private function sanitizeTitle(string $title): string {
         $title = strip_tags($title);
         $title = html_entity_decode($title, ENT_HTML5, 'UTF-8');
 

@@ -1,9 +1,13 @@
 <?php
 
+declare(strict_types=1);
+
 namespace spouts\github;
 
+use helpers\HtmlString;
 use helpers\WebClient;
 use spouts\Item;
+use spouts\Parameter;
 
 /**
  * Spout for fetching from GitHub
@@ -12,53 +16,54 @@ use spouts\Item;
  * @license    GPLv3 (https://www.gnu.org/licenses/gpl-3.0.html)
  * @author     Tobias Zeising <tobias.zeising@aditu.de>
  * @author     Tim Gerundt <tim@gerundt.de>
+ *
+ * @phpstan-type Commit array{commit: array{message: string, author: array{date: string, name: string}}, sha: string, html_url: string}
+ * @phpstan-type GhParams array{owner: string, repo: string, branch: string}
+ *
+ * @extends \spouts\spout<null>
  */
 class commits extends \spouts\spout {
-    /** @var string name of source */
-    public $name = 'GitHub: commits';
+    public string $name = 'GitHub: commits';
 
-    /** @var string description of this source type */
-    public $description = 'List commits on a repository.';
+    public string $description = 'List commits on a repository.';
 
-    /** @var array configurable parameters */
-    public $params = [
+    public array $params = [
         'owner' => [
             'title' => 'Owner',
-            'type' => 'text',
+            'type' => Parameter::TYPE_TEXT,
             'default' => '',
             'required' => true,
-            'validation' => ['notempty'],
+            'validation' => [Parameter::VALIDATION_NONEMPTY],
         ],
         'repo' => [
             'title' => 'Repository',
-            'type' => 'text',
+            'type' => Parameter::TYPE_TEXT,
             'default' => '',
             'required' => true,
-            'validation' => ['notempty'],
+            'validation' => [Parameter::VALIDATION_NONEMPTY],
         ],
         'branch' => [
             'title' => 'Branch',
-            'type' => 'text',
+            'type' => Parameter::TYPE_TEXT,
             'default' => '',
             'required' => true,
-            'validation' => ['notempty'],
+            'validation' => [Parameter::VALIDATION_NONEMPTY],
         ],
     ];
 
-    /** @var ?string title of the source */
-    protected $title = null;
+    /** Title of the source */
+    protected ?string $title = null;
 
-    /** @var string global html url for the source */
-    protected $htmlUrl = '';
+    /** Global html url for the source */
+    protected string $htmlUrl = '';
 
-    /** @var string URL of the favicon */
-    protected $faviconUrl = 'https://assets-cdn.github.com/favicon.ico';
+    /** URL of the favicon */
+    protected string $faviconUrl = 'https://assets-cdn.github.com/favicon.ico';
 
-    /** @var WebClient */
-    private $webClient;
+    /** @var Commit[] current fetched items */
+    private array $items = [];
 
-    /** @var array[] current fetched items */
-    private $items = [];
+    private WebClient $webClient;
 
     public function __construct(WebClient $webClient) {
         $this->webClient = $webClient;
@@ -68,7 +73,10 @@ class commits extends \spouts\spout {
     // Source Methods
     //
 
-    public function load(array $params) {
+    /**
+     * @param GhParams $params
+     */
+    public function load(array $params): void {
         $this->htmlUrl = 'https://github.com/' . urlencode($params['owner']) . '/' . urlencode($params['repo']) . '/' . urlencode($params['branch']);
 
         // https://docs.github.com/en/rest/commits/commits#list-commits
@@ -82,28 +90,28 @@ class commits extends \spouts\spout {
         $this->title = "Recent Commits to {$params['repo']}:{$params['branch']}";
     }
 
-    public function getTitle() {
+    public function getTitle(): ?string {
         return $this->title;
     }
 
-    public function getHtmlUrl() {
+    public function getHtmlUrl(): ?string {
         return $this->htmlUrl;
     }
 
-    public function getIcon() {
+    public function getIcon(): ?string {
         return $this->faviconUrl;
     }
 
     /**
      * @return \Generator<Item<null>> list of items
      */
-    public function getItems() {
+    public function getItems(): iterable {
         foreach ($this->items as $item) {
             $message = $item['commit']['message'];
 
             $id = $item['sha'];
-            $title = htmlspecialchars(self::cutTitle($message));
-            $content = nl2br(htmlspecialchars($message), false);
+            $title = HtmlString::fromPlainText(self::cutTitle($message));
+            $content = HtmlString::fromRaw(nl2br(htmlspecialchars($message), false));
             $thumbnail = null;
             $icon = null;
             $link = $item['html_url'];
@@ -119,12 +127,13 @@ class commits extends \spouts\spout {
                 $icon,
                 $link,
                 $date,
-                $author
+                $author,
+                null
             );
         }
     }
 
-    public function destroy() {
+    public function destroy(): void {
         unset($this->items);
         $this->items = [];
     }
@@ -137,8 +146,9 @@ class commits extends \spouts\spout {
      *
      * @return string Cutted title
      */
-    public static function cutTitle($title, $cutafter = 69) {
-        $title = strtok($title, "\n");
+    public static function cutTitle(string $title, int $cutafter = 69): string {
+        // strtok returns false for empty string.
+        $title = strtok($title, "\n") ?: '';
         if (($cutafter > 0) && (strlen($title) > $cutafter)) {
             return substr($title, 0, $cutafter) . '…';
         }

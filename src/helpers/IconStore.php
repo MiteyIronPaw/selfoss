@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace helpers;
 
 use helpers\Storage\FileStorage;
@@ -9,11 +11,8 @@ use Monolog\Logger;
  * Icon storage.
  */
 class IconStore {
-    /** @var Logger */
-    private $logger;
-
-    /** @var FileStorage */
-    private $storage;
+    private FileStorage $storage;
+    private Logger $logger;
 
     public function __construct(FileStorage $storage, Logger $logger) {
         $this->storage = $storage;
@@ -22,13 +21,8 @@ class IconStore {
 
     /**
      * Store given blob as URL.
-     *
-     * @param string $url
-     * @param string $blob
-     *
-     * @return ?string
      */
-    public function store($url, $blob) {
+    public function store(string $url, string $blob): ?string {
         $extension = Image::getExtension(ContentLoader::ICON_FORMAT);
         $this->logger->debug('Storing icon: ' . $url);
 
@@ -39,10 +33,8 @@ class IconStore {
      * Delete all icons except for requested ones.
      *
      * @param callable(string):bool $shouldKeep
-     *
-     * @return void
      */
-    public function cleanup($shouldKeep) {
+    public function cleanup(callable $shouldKeep): void {
         $this->storage->cleanup($shouldKeep);
     }
 }

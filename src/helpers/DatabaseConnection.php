@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace helpers;
 
 use Monolog\Logger;
@@ -13,40 +15,38 @@ use PDOException;
  * Copyright (c) 2009-2019 F3::Factory/Bong Cosca
  */
 class DatabaseConnection {
-    /** @var PDO Original PDO connection */
-    private $pdo;
+    /** Whether a transaction is currently in progress */
+    private bool $isInTransaction = false;
 
-    /** @var string */
-    private $tableNamePrefix;
+    private PDO $pdo;
 
-    /** @var bool whether a transaction is currently in progress */
-    private $isInTransaction = false;
-
-    /** @var Logger */
-    private $logger;
+    private Logger $logger;
+    private string $tableNamePrefix;
 
     /**
      * Instantiate class
      *
-     * @param string $dsn
-     * @param string $user
-     * @param string $pw
-     * @param string $tableNamePrefix
-     **/
-    public function __construct(Logger $logger, $dsn, $user = null, $pw = null, array $options = [], $tableNamePrefix = '') {
+     * @param ?array<string, mixed> $options
+     */
+    public function __construct(
+        Logger $logger,
+        string $dsn,
+        ?string $user = null,
+        ?string $password = null,
+        ?array $options = null,
+        string $tableNamePrefix = ''
+    ) {
         $this->logger = $logger;
         $this->logger->debug('Creating database connection', ['dsn' => $dsn]);
-        $this->pdo = new PDO($dsn, $user, $pw, $options);
+        $this->pdo = new PDO($dsn, $user, $password, $options);
         $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         $this->tableNamePrefix = $tableNamePrefix;
     }
 
     /**
      * Begin SQL transaction
-     *
-     * @return bool
-     **/
-    public function beginTransaction() {
+     */
+    public function beginTransaction(): bool {
         $out = $this->pdo->beginTransaction();
         $this->isInTransaction = true;
 
@@ -55,10 +55,8 @@ class DatabaseConnection {
 
     /**
      * Roll back SQL transaction
-     *
-     * @return bool
-     **/
-    public function rollBack() {
+     */
+    public function rollBack(): bool {
         $out = false;
         if ($this->pdo->inTransaction()) {
             $out = $this->pdo->rollBack();
@@ -70,10 +68,8 @@ class DatabaseConnection {
 
     /**
      * Commit SQL transaction
-     *
-     * @return bool
-     **/
-    public function commit() {
+     */
+    public function commit(): bool {
         $out = false;
         if ($this->pdo->inTransaction()) {
             $out = $this->pdo->commit();
@@ -83,30 +79,16 @@ class DatabaseConnection {
         return $out;
     }
 
-    /**
-     * @return string
-     **/
-    public function getTableNamePrefix() {
+    public function getTableNamePrefix(): string {
         return $this->tableNamePrefix;
-    }
-
-    /**
-     * Return transaction flag
-     *
-     * @return bool
-     **/
-    private function isInTransaction() {
-        return $this->isInTransaction;
     }
 
     /**
      * Map data type of argument to a PDO constant
      *
      * @param scalar $val
-     *
-     * @return int
-     **/
-    private function type($val) {
+     */
+    private function type($val): int {
         switch (gettype($val)) {
             case 'NULL':
                 return PDO::PARAM_NULL;
@@ -124,22 +106,9 @@ class DatabaseConnection {
     /**
      * Execute SQL statement.
      *
-     * @param string $cmd
-     * @param array|scalar $args
-     *
-     * @return \PDOStatement
-     **/
-    public function execute($cmd, $args = []) {
-        if (is_scalar($args)) {
-            $args = [1 => $args];
-        }
-
-        // ensure 1-based arguments
-        if (array_key_exists(0, $args)) {
-            array_unshift($args, '');
-            unset($args[0]);
-        }
-
+     * @param array<string, mixed> $args
+     */
+    public function execute(string $cmd, array $args = []): \PDOStatement {
         try {
             $query = $this->pdo->prepare($cmd);
         } catch (PDOException $e) {
@@ -184,17 +153,17 @@ class DatabaseConnection {
     /**
      * Execute SQL statement and fetch the result as an associative array (when applicable).
      *
-     * @param string $cmd
-     * @param array|scalar $args
+     * @param array<string, mixed> $args
      *
-     * @return ?array
-     **/
-    public function exec($cmd, $args = []) {
+     * @return array<int, array<string, mixed>>
+     */
+    public function exec(string $cmd, array $args = []): array {
         $statement = $this->execute($cmd, $args);
 
-        $result = null;
+        $result = [];
         if ($statement->columnCount() !== 0) {
-            $result = $statement->fetchAll(PDO::FETCH_ASSOC);
+            // Can return false on failure before PHP 8.0.0.
+            $result = $statement->fetchAll(PDO::FETCH_ASSOC) ?: [];
         }
 
         $statement->closeCursor();
@@ -207,22 +176,22 @@ class DatabaseConnection {
      * Quote string
      *
      * @param mixed $val
-     * @param int $type
-     *
-     * @return string
-     **/
-    public function quote($val, $type = PDO::PARAM_STR) {
-        return $this->pdo->quote($val, $type);
+     */
+    public function quote($val, int $type = PDO::PARAM_STR): string {
+        return $this->pdo->quote((string) $val, $type);
     }
 
-    /**
-     * Redirect call to PDO object
-     *
-     * @param string $func
-     *
-     * @return mixed
-     **/
-    public function __call($func, array $args) {
-        return call_user_func_array([$this->pdo, $func], $args);
+    public function sqliteCreateFunction(
+        string $function_name,
+        callable $callback,
+        int $num_args = -1,
+        int $flags = 0
+    ): bool {
+        return $this->pdo->sqliteCreateFunction(
+            $function_name,
+            $callback,
+            $num_args,
+            $flags
+        );
     }
 }

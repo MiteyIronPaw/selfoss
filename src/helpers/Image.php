@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace helpers;
 
 use Elphin\IcoFileLoader\IcoFileService;
@@ -19,7 +21,7 @@ class Image {
     public const FORMAT_JPEG = 'jpeg';
     public const FORMAT_PNG = 'png';
 
-    private static $extensions = [
+    private const EXTENSIONS = [
         self::FORMAT_JPEG => 'jpg',
         self::FORMAT_PNG => 'png',
     ];
@@ -43,11 +45,8 @@ class Image {
         'application/ico' => 'ico',
     ];
 
-    /** @var Logger */
-    private $logger;
-
-    /** @var WebClient */
-    private $webClient;
+    private Logger $logger;
+    private WebClient $webClient;
 
     public function __construct(Logger $logger, WebClient $webClient) {
         $this->logger = $logger;
@@ -58,24 +57,24 @@ class Image {
      * Get preferred extension for the format.
      *
      * @param self::FORMAT_* $format
-     *
-     * @return string
      */
-    public static function getExtension($format) {
-        return self::$extensions[$format];
+    public static function getExtension(string $format): string {
+        return self::EXTENSIONS[$format];
     }
 
     /**
      * fetch favicon
      *
      * @param string $url source url
-     * @param bool $isHtmlUrl
-     * @param ?int $width
-     * @param ?int $height
      *
      * @return ?array{string, ImageHolder} pair of URL and blob containing the image data
      */
-    public function fetchFavicon($url, $isHtmlUrl = false, $width = null, $height = null) {
+    public function fetchFavicon(
+        string $url,
+        bool $isHtmlUrl = false,
+        ?int $width = null,
+        ?int $height = null
+    ): ?array {
         // try given url
         try {
             $http = $this->webClient->getHttpClient();
@@ -141,20 +140,24 @@ class Image {
     /**
      * Load image from URL, optionally resize it and convert it to desired format.
      *
-     * @param string $data
-     * @param self::FORMAT_JPEG|self::FORMAT_PNG $format file format of output file
+     * @param self::FORMAT_* $format file format of output file
      * @param ?int $width target width
      * @param ?int $height target height
      *
      * @return ?ImageHolder blob containing the processed image
      */
-    public function loadImage($data, $format = self::FORMAT_PNG, $width = null, $height = null) {
+    public function loadImage(
+        string $data,
+        string $format = self::FORMAT_PNG,
+        ?int $width = null,
+        ?int $height = null
+    ): ?ImageHolder {
         $imgInfo = null;
 
         // get image type
         if (extension_loaded('imagick')) {
             // check for svgz or svg
-            if (substr($data, 0, 2) === "\x1f\x8b" && ($d = gzdecode($data) !== false)) {
+            if (str_starts_with($data, "\x1f\x8b") && ($d = gzdecode($data)) !== false) {
                 $data = $d;
             }
 
@@ -171,8 +174,8 @@ class Image {
             }
         }
 
-        $mimeType = isset($imgInfo['mime']) ? strtolower($imgInfo['mime']) : null;
-        if ($mimeType !== null && isset(self::IMAGE_TYPES[$mimeType])) {
+        $mimeType = strtolower($imgInfo['mime']);
+        if (isset(self::IMAGE_TYPES[$mimeType])) {
             $type = self::IMAGE_TYPES[$mimeType];
         } else {
             return null;
@@ -239,11 +242,9 @@ class Image {
         }
 
         // resize
-        if ($width !== null && $height !== null) {
-            if (($height !== null && $wideImage->getHeight() > $height) ||
-               ($width !== null && $wideImage->getWidth() > $width)) {
-                $wideImage = $wideImage->resize($width, $height);
-            }
+        if (($height !== null && $wideImage->getHeight() > $height)
+            || ($width !== null && $wideImage->getWidth() > $width)) {
+            $wideImage = $wideImage->resize($width, $height);
         }
 
         // return image as jpg or png

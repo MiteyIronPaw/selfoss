@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace daos\mysql;
 
 use daos\DatabaseInterface;
@@ -14,13 +16,10 @@ use helpers\Configuration;
  */
 class Tags implements \daos\TagsInterface {
     /** @var class-string SQL helper */
-    protected static $stmt = Statements::class;
+    protected static string $stmt = Statements::class;
 
-    /** @var Configuration configuration */
-    private $configuration;
-
-    /** @var DatabaseInterface database connection */
-    protected $database;
+    private Configuration $configuration;
+    protected DatabaseInterface $database;
 
     public function __construct(Configuration $configuration, DatabaseInterface $database) {
         $this->configuration = $configuration;
@@ -29,13 +28,8 @@ class Tags implements \daos\TagsInterface {
 
     /**
      * save given tag color
-     *
-     * @param string $tag
-     * @param string $color
-     *
-     * @return void
      */
-    public function saveTagColor($tag, $color) {
+    public function saveTagColor(string $tag, string $color): void {
         if ($this->hasTag($tag) === true) {
             $this->database->exec('UPDATE ' . $this->configuration->dbPrefix . 'tags SET color=:color WHERE tag=:tag', [
                 ':tag' => $tag,
@@ -51,12 +45,8 @@ class Tags implements \daos\TagsInterface {
 
     /**
      * save given tag with random color
-     *
-     * @param string $tag
-     *
-     * @return void
      */
-    public function autocolorTag($tag) {
+    public function autocolorTag(string $tag): void {
         if (strlen(trim($tag)) === 0) {
             return;
         }
@@ -80,42 +70,39 @@ class Tags implements \daos\TagsInterface {
     /**
      * returns all tags with color
      *
-     * @return array{tag: string, color: string}[]
+     * @return array<array{tag: string, color: string}>
      */
-    public function get() {
-        return $this->database->exec('SELECT
-                    tag, color
-                   FROM ' . $this->configuration->dbPrefix . 'tags
-                   ORDER BY LOWER(tag);');
+    public function get(): array {
+        /** @var array<array{tag: string, color: string}> */
+        $result = $this->database->exec('SELECT tag, color FROM ' . $this->configuration->dbPrefix . 'tags ORDER BY LOWER(tag);');
+
+        return $result;
     }
 
     /**
      * returns all tags with color and unread count
      *
-     * @return array{tag: string, color: string, unread: int}[]
+     * @return array<array{tag: string, color: string, unread: int}>
      */
-    public function getWithUnread() {
-        $stmt = static::$stmt;
+    public function getWithUnread(): array {
         $select = 'SELECT tag, color, COUNT(items.id) AS unread
                    FROM ' . $this->configuration->dbPrefix . 'tags AS tags,
                         ' . $this->configuration->dbPrefix . 'sources AS sources
                    LEFT OUTER JOIN ' . $this->configuration->dbPrefix . 'items AS items
-                       ON (items.source=sources.id AND ' . $stmt::isTrue('items.unread') . ')
-                   WHERE ' . $stmt::csvRowMatches('sources.tags', 'tags.tag') . '
+                       ON (items.source=sources.id AND ' . static::$stmt::isTrue('items.unread') . ')
+                   WHERE ' . static::$stmt::csvRowMatches('sources.tags', 'tags.tag') . '
                    GROUP BY tags.tag, tags.color
                    ORDER BY LOWER(tags.tag);';
 
-        return $stmt::ensureRowTypes($this->database->exec($select), ['unread' => DatabaseInterface::PARAM_INT]);
+        return static::$stmt::ensureRowTypes($this->database->exec($select), ['unread' => DatabaseInterface::PARAM_INT]);
     }
 
     /**
      * remove all unused tag color definitions
      *
-     * @param array $tags available tags
-     *
-     * @return void
+     * @param string[] $tags available tags
      */
-    public function cleanup(array $tags) {
+    public function cleanup(array $tags): void {
         $tagsInDb = $this->get();
         foreach ($tagsInDb as $tag) {
             if (in_array($tag['tag'], $tags, true) === false) {
@@ -127,11 +114,9 @@ class Tags implements \daos\TagsInterface {
     /**
      * returns whether a color is used or not
      *
-     * @param string $color
-     *
      * @return bool true if color is used by an tag
      */
-    private function isColorUsed($color) {
+    private function isColorUsed(string $color): bool {
         $res = $this->database->exec('SELECT COUNT(*) AS amount FROM ' . $this->configuration->dbPrefix . 'tags WHERE color=:color', [':color' => $color]);
 
         return $res[0]['amount'] > 0;
@@ -140,13 +125,11 @@ class Tags implements \daos\TagsInterface {
     /**
      * check whether tag color is defined.
      *
-     * @param string $tag
-     *
      * @return bool true if color is used by an tag
      */
-    public function hasTag($tag) {
+    public function hasTag(string $tag): bool {
         if ($this->configuration->dbType === 'mysql') {
-            $where = 'WHERE tag = _utf8mb4 :tag COLLATE utf8mb4_general_ci';
+            $where = 'WHERE tag = _utf8mb4 :tag COLLATE utf8mb4_bin';
         } else {
             $where = 'WHERE tag=:tag';
         }
@@ -157,12 +140,8 @@ class Tags implements \daos\TagsInterface {
 
     /**
      * delete tag
-     *
-     * @param string $tag
-     *
-     * @return void
      */
-    public function delete($tag) {
+    public function delete(string $tag): void {
         $this->database->exec('DELETE FROM ' . $this->configuration->dbPrefix . 'tags WHERE tag=:tag', [':tag' => $tag]);
     }
 }

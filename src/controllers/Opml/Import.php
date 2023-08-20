@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace controllers\Opml;
 
 use helpers\Authentication;
@@ -16,23 +18,14 @@ use SimpleXMLElement;
  * @author     Sean Rand <asanernd@gmail.com>
  */
 class Import {
-    /** @var Authentication authentication helper */
-    private $authentication;
+    /** @var array<string, array{id: int, tags: string[]}> Sources that have been imported from the OPML file */
+    private array $imported = [];
 
-    /** @var array Sources that have been imported from the OPML file */
-    private $imported = [];
-
-    /** @var Logger */
-    private $logger;
-
-    /** @var \daos\Sources */
-    private $sourcesDao;
-
-    /** @var \daos\Tags */
-    private $tagsDao;
-
-    /** @var View view helper */
-    private $view;
+    private Authentication $authentication;
+    private Logger $logger;
+    private \daos\Sources $sourcesDao;
+    private \daos\Tags $tagsDao;
+    private View $view;
 
     public function __construct(Authentication $authentication, Logger $logger, \daos\Sources $sourcesDao, \daos\Tags $tagsDao, View $view) {
         $this->authentication = $authentication;
@@ -47,20 +40,17 @@ class Import {
      * html
      *
      * @note Borrows from controllers/Sources.php:write
-     *
-     * @return void
      */
-    public function add() {
+    public function add(): void {
         $this->authentication->needsLoggedIn();
 
         http_response_code(400);
 
-        /** @var array */
+        /** @var string[] */
         $messages = [];
 
         try {
-            $opml = $_FILES['opml'];
-            if ($opml['error'] === UPLOAD_ERR_NO_FILE) {
+            if (!isset($_FILES['opml']) || ($opml = $_FILES['opml'])['error'] === UPLOAD_ERR_NO_FILE) {
                 throw new \Exception('No file uploaded!');
             }
 
@@ -100,7 +90,6 @@ class Import {
             // show errors
             if (count($errors) > 0) {
                 http_response_code(202);
-                $messages[] = 'The following feeds could not be imported:';
                 $messages = array_merge($messages, $errors);
             } else { // On success bring them back to their subscription list
                 http_response_code(200);
@@ -123,12 +112,12 @@ class Import {
      * - We use non-rss outline’s text as tags
      * - Reads outline elements from both the default and selfoss namespace
      *
-     * @param SimpleXMLElement $xml A SimpleXML object with <outline> children
-     * @param array $tags An array of tags for the current <outline>
+     * @param SimpleXMLElement $xml A XML element object with <outline> children
+     * @param string[] $tags An array of tags for the current <outline>
      *
      * @return string[] titles of feeds that could not be added to subscriptions
      */
-    private function processGroup(SimpleXMLElement $xml, array $tags = []) {
+    private function processGroup(SimpleXMLElement $xml, array $tags = []): array {
         $errors = [];
 
         $xml->registerXPathNamespace('selfoss', 'https://selfoss.aditu.de/');
@@ -138,13 +127,17 @@ class Import {
         // but both Google Reader and Feedly duplicate the “text” attribute as “title” so it seems to be common.
         // Feedly seems to prefer “title” for both category names and feed names.
         // We will do the same in case someone mistakenly exports the “title” and forgets about “text”.
-        $title = (string) $xml->attributes()->title;
-        $title = $title ?: (string) $xml->attributes()->text;
+        /** @var SimpleXMLElement attributes */
+        $attrs = $xml->attributes();
+        $title = (string) $attrs->title;
+        $title = $title ?: (string) $attrs->text;
         if ($title !== '' && $title !== '/') {
             $tags[] = $title;
             // for new tags, try to import tag color, otherwise use random color
             if (!$this->tagsDao->hasTag($title)) {
-                $tagColor = (string) $xml->attributes('selfoss', true)->color;
+                /** @var SimpleXMLElement attributes in selfoss namespace */
+                $selfossAttrs = $xml->attributes('selfoss', true);
+                $tagColor = (string) $selfossAttrs->color;
                 if ($tagColor !== '') {
                     $this->tagsDao->saveTagColor($title, $tagColor);
                 } else {
@@ -154,7 +147,7 @@ class Import {
         }
 
         // parse outline items from the default and selfoss namespaces
-        foreach ($xml->xpath('outline|selfoss:outline') as $outline) {
+        foreach ($xml->xpath('outline|selfoss:outline') ?: [] as $outline) {
             if (count($outline->children()) + count($outline->children('selfoss', true)) > 0) {
                 // outline element has children, recurse into it
                 $ret = $this->processGroup($outline, $tags);
@@ -173,8 +166,8 @@ class Import {
     /**
      * Add new feed subscription
      *
-     * @param SimpleXMLElement $xml xml feed entry for item
-     * @param array $tags of the entry
+     * @param SimpleXMLElement $xml An <outline> XML element corresponding to a feed
+     * @param string[] $tags of the entry
      *
      * @return true|string true on success or item title on error
      */
@@ -183,7 +176,9 @@ class Import {
         // Optional attributes: title, htmlUrl, language, title, version
         // Selfoss namespaced attributes: spout, params
 
+        /** @var SimpleXMLElement attributes */
         $attrs = $xml->attributes();
+        /** @var SimpleXMLElement attributes in selfoss namespace */
         $nsattrs = $xml->attributes('selfoss', true);
 
         // description

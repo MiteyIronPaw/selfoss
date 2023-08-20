@@ -1,6 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace helpers;
+
+use InvalidArgumentException;
 
 class Misc {
     public const ORDER_ASC = 1;
@@ -30,7 +34,7 @@ class Misc {
      *
      * @param callable|array-key|array{callable|array-key, self::ORDER_*} ...$transformations
      *
-     * @return callable(mixed, mixed): self::CMP_* comparator
+     * @return callable(mixed, mixed): (self::CMP_*) comparator
      */
     public static function compareBy(...$transformations) {
         if (count($transformations) > 0) {
@@ -46,6 +50,7 @@ class Misc {
                         $comparison = $a[$transformation] <=> $b[$transformation];
                     }
 
+                    /** @var self::CMP_* */ // For PHPStan.
                     $comparison = $order * $comparison;
 
                     if ($comparison !== self::CMP_EQ) {
@@ -58,5 +63,39 @@ class Misc {
         } else {
             return [self::class, 'compare'];
         }
+    }
+
+    /**
+     * Ensure the passed value is numeric and converts it to integer.
+     *
+     * @param mixed $value
+     *
+     * @throws \InvalidArgumentException when argument is not a numberic value
+     */
+    public static function forceId($value): int {
+        if (is_numeric($value)) {
+            return (int) $value;
+        }
+
+        throw new InvalidArgumentException("{$value} is not a well-formed id.");
+    }
+
+    /**
+     * Ensures the passed value is numeric or list thereof and converts it to integer list.
+     *
+     * @param array<numeric>|numeric $value
+     *
+     * @throws \InvalidArgumentException when argument is not a numeric value or a list thereof
+     *
+     * @return int[]
+     */
+    public static function forceIds($value): array {
+        if (is_array($value)) {
+            return array_map([self::class, 'forceId'], $value);
+        }
+
+        return [
+            self::forceId($value)
+        ];
     }
 }

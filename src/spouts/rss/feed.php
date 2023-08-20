@@ -1,12 +1,16 @@
 <?php
 
+declare(strict_types=1);
+
 namespace spouts\rss;
 
 use helpers\FeedReader;
+use helpers\HtmlString;
 use helpers\Image;
 use Monolog\Logger;
 use SimplePie;
 use spouts\Item;
+use spouts\Parameter;
 
 /**
  * Spout for fetching an rss feed
@@ -14,42 +18,36 @@ use spouts\Item;
  * @copyright  Copyright (c) Tobias Zeising (http://www.aditu.de)
  * @license    GPLv3 (https://www.gnu.org/licenses/gpl-3.0.html)
  * @author     Tobias Zeising <tobias.zeising@aditu.de>
+ *
+ * @extends \spouts\spout<SimplePie\Item>
  */
 class feed extends \spouts\spout {
-    /** @var string name of source */
-    public $name = 'RSS Feed';
+    public string $name = 'RSS Feed';
 
-    /** @var string description of this source type */
-    public $description = 'Get posts from plain RSS/Atom feed.';
+    public string $description = 'Get posts from plain RSS/Atom feed.';
 
-    /** @var array configurable parameters */
-    public $params = [
+    public array $params = [
         'url' => [
             'title' => 'URL',
-            'type' => 'url',
+            'type' => Parameter::TYPE_URL,
             'default' => '',
             'required' => true,
-            'validation' => ['notempty'],
+            'validation' => [Parameter::VALIDATION_NONEMPTY],
         ],
     ];
 
-    /** @var ?string URL of the source */
-    protected $htmlUrl = null;
+    /** URL of the source */
+    protected ?string $htmlUrl = null;
 
-    /** @var Logger */
-    private $logger;
-
-    /** @var FeedReader */
-    private $feed;
-
-    /** @var Image image helper */
-    private $imageHelper;
-
-    /** @var ?string title of the source */
-    protected $title = null;
+    /** Title of the source */
+    protected ?string $title = null;
 
     /** @var SimplePie\Item[] current fetched items */
-    private $items = [];
+    private array $items = [];
+
+    private Logger $logger;
+    private FeedReader $feed;
+    private Image $imageHelper;
 
     public function __construct(FeedReader $feed, Image $imageHelper, Logger $logger) {
         $this->imageHelper = $imageHelper;
@@ -61,45 +59,38 @@ class feed extends \spouts\spout {
     // Source Methods
     //
 
-    public function load(array $params) {
+    public function load(array $params): void {
         $feedData = $this->feed->load(htmlspecialchars_decode($params['url']));
         $this->items = $feedData['items'];
         $this->htmlUrl = $feedData['htmlUrl'];
         $this->title = $feedData['title'];
     }
 
-    /**
-     * @return ?string
-     */
-    public function getTitle() {
+    public function getTitle(): ?string {
         return $this->title;
     }
 
-    /**
-     * @return ?string
-     */
-    public function getXmlUrl(array $params) {
+    public function getXmlUrl(array $params): ?string {
         return isset($params['url']) ? html_entity_decode($params['url']) : null;
     }
 
-    /**
-     * @return ?string
-     */
-    public function getHtmlUrl() {
+    public function getHtmlUrl(): ?string {
         return $this->htmlUrl;
     }
 
     /**
      * @return \Generator<Item<SimplePie\Item>> list of items
      */
-    public function getItems() {
+    public function getItems(): iterable {
         foreach ($this->items as $item) {
             $id = (string) $item->get_id();
             if (strlen($id) > 255) {
                 $id = md5($id);
             }
-            $title = htmlspecialchars_decode((string) $item->get_title());
-            $content = (string) $item->get_content();
+            $title = (string) $item->get_title();
+            // Atom feeds can contain HTML in titles, strip tags and convert to text.
+            $title = HtmlString::fromPlainText(htmlspecialchars_decode(strip_tags($title)));
+            $content = HtmlString::fromRaw((string) $item->get_content());
             $thumbnail = null;
             $icon = null;
             $link = htmlspecialchars_decode((string) $item->get_link(), ENT_COMPAT); // SimplePie sanitizes URLs
@@ -121,10 +112,7 @@ class feed extends \spouts\spout {
         }
     }
 
-    /**
-     * @return ?string
-     */
-    private function getAuthorString(SimplePie\Item $item) {
+    private function getAuthorString(SimplePie\Item $item): ?string {
         $author = $item->get_author();
         if (isset($author)) {
             // Both are sanitized using SimplePie::CONSTRUCT_TEXT
@@ -134,14 +122,14 @@ class feed extends \spouts\spout {
             if ($name !== null) {
                 return htmlspecialchars_decode($name);
             } elseif ($email !== null) {
-                return htmlspecialchars_decode($author->get_email());
+                return htmlspecialchars_decode($author->get_email() ?? '');
             }
         }
 
         return null;
     }
 
-    public function getIcon() {
+    public function getIcon(): ?string {
         // Try to use feed logo first
         $feedLogoUrl = $this->feed->getImageUrl();
         if ($feedLogoUrl && ($iconData = $this->imageHelper->fetchFavicon($feedLogoUrl)) !== null) {
@@ -179,7 +167,7 @@ class feed extends \spouts\spout {
         return null;
     }
 
-    public function destroy() {
+    public function destroy(): void {
         $this->feed->__destruct();
         unset($this->items);
         $this->items = [];

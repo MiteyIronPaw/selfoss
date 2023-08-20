@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace daos\pgsql;
 
 use daos\DatabaseInterface;
@@ -20,7 +22,7 @@ class Statements extends \daos\mysql\Statements {
      *
      * @return string full statement
      */
-    public static function nullFirst($column, $order) {
+    public static function nullFirst(string $column, string $order): string {
         $nulls = $order === 'DESC' ? 'LAST' : 'FIRST';
 
         return "$column $order NULLS $nulls";
@@ -33,7 +35,7 @@ class Statements extends \daos\mysql\Statements {
      *
      * @return string full statement
      */
-    public static function sumBool($column) {
+    public static function sumBool(string $column): string {
         return "SUM($column::int)";
     }
 
@@ -44,7 +46,7 @@ class Statements extends \daos\mysql\Statements {
      *
      * @return string full statement
      */
-    public static function isTrue($column) {
+    public static function isTrue(string $column): string {
         return "$column=true";
     }
 
@@ -55,7 +57,7 @@ class Statements extends \daos\mysql\Statements {
      *
      * @return string full statement
      */
-    public static function isFalse($column) {
+    public static function isFalse(string $column): string {
         return "$column=false";
     }
 
@@ -67,7 +69,7 @@ class Statements extends \daos\mysql\Statements {
      *
      * @return string full statement
      */
-    public static function csvRowMatches($column, $value) {
+    public static function csvRowMatches(string $column, string $value): string {
         return "$value=ANY(string_to_array($column, ','))";
     }
 
@@ -75,16 +77,23 @@ class Statements extends \daos\mysql\Statements {
      * Ensure row values have the appropriate PHP type. This assumes we are
      * using buffered queries (sql results are in PHP memory).
      *
-     * @param array $rows array of associative array representing row results
-     * @param array $expectedRowTypes associative array mapping columns to PDO types
+     * @param array<array<mixed>> $rows array of associative array representing row results
+     * @param array<string, DatabaseInterface::PARAM_*> $expectedRowTypes associative array mapping columns to PDO types
      *
-     * @return array of associative array representing row results having
+     * @return array<array<mixed>> of associative array representing row results having
      *         expected types
      */
-    public static function ensureRowTypes(array $rows, array $expectedRowTypes) {
+    public static function ensureRowTypes(array $rows, array $expectedRowTypes): array {
         foreach ($rows as $rowIndex => $row) {
             foreach ($expectedRowTypes as $columnIndex => $type) {
                 if (array_key_exists($columnIndex, $row)) {
+                    if ($type & DatabaseInterface::PARAM_NULL) {
+                        $type ^= DatabaseInterface::PARAM_NULL;
+                        if ($row[$columnIndex] === null) {
+                            // Keep as is.
+                            continue;
+                        }
+                    }
                     switch ($type) {
                         // pgsql returns correct PHP types for INT and BOOL
                         case DatabaseInterface::PARAM_CSV:
@@ -95,11 +104,7 @@ class Statements extends \daos\mysql\Statements {
                             }
                             break;
                         case DatabaseInterface::PARAM_DATETIME:
-                            if (empty($row[$columnIndex])) {
-                                $value = null;
-                            } else {
-                                $value = new \DateTime($row[$columnIndex]);
-                            }
+                            $value = new \DateTime($row[$columnIndex]);
                             break;
                         default:
                             $value = null;
@@ -122,7 +127,7 @@ class Statements extends \daos\mysql\Statements {
      *
      * @return string expression for matching
      */
-    public static function matchesRegex($value, $regex) {
+    public static function matchesRegex(string $value, string $regex): string {
         // https://www.postgresql.org/docs/12/functions-matching.html#FUNCTIONS-POSIX-REGEXP
         return $value . ' ~ ' . $regex;
     }

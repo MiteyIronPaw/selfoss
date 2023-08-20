@@ -1,28 +1,43 @@
 <?php
 
+declare(strict_types=1);
+
 namespace spouts;
 
 /**
  * This abstract class defines the interface of a spout (source or plugin)
  * template pattern
  *
+ * @template ItemExtraData of mixed
+ *
  * @copyright  Copyright (c) Tobias Zeising (http://www.aditu.de)
  * @license    GPLv3 (https://www.gnu.org/licenses/gpl-3.0.html)
  * @author     Tobias Zeising <tobias.zeising@aditu.de>
  */
 abstract class spout {
-    /** @var string name of source */
-    public $name = '';
+    /** Name of source */
+    public string $name = '';
 
-    /** @var string description of this source type */
-    public $description = '';
+    /** Description of this source type */
+    public string $description = '';
 
     /**
-     * config params
+     * Configurable parameters
      * array of arrays with name, type, default value, required, validation type
      *
-     * - Values for type: text, password, checkbox, select
-     * - Values for validation: alpha, email, numeric, int, alnum, notempty
+     * - Values for type:
+     *   - `Parameter::TYPE_TEXT`
+     *   - `Parameter::TYPE_URL`
+     *   - `Parameter::TYPE_PASSWORD`
+     *   - `Parameter::TYPE_CHECKBOX`
+     *   - `Parameter::TYPE_SELECT`
+     * - Values for validation:
+     *   - `Parameter::VALIDATION_ALPHA`
+     *   - `Parameter::VALIDATION_EMAIL`
+     *   - `Parameter::VALIDATION_NUMERIC`
+     *   - `Parameter::VALIDATION_INT`
+     *   - `Parameter::VALIDATION_ALPHANUMERIC`
+     *   - `Parameter::VALIDATION_NONEMPTY`
      *
      * When type is "select", a new entry "values" must be supplied, holding
      * key/value pairs of internal names (key) and displayed labels (value).
@@ -32,37 +47,35 @@ abstract class spout {
      * [
      *   "id" => [
      *     "title"      => "URL",
-     *     "type"       => "text",
+     *     "type"       => Parameter::TYPE_TEXT,
      *     "default"    => "",
      *     "required"   => true,
-     *     "validation" => ["alnum"]
+     *     "validation" => [Parameter::VALIDATION_ALPHANUMERIC]
      *   ],
      *   ....
      * ]
      *
-     * @var array
+     * @var SpoutParameters
      */
-    public $params = [];
+    public array $params = [];
 
     /**
      * loads content for given source
      *
-     * @param array $params params of this source
+     * @param array<string, mixed> $params params of this source
      *
      * @throws \GuzzleHttp\Exception\GuzzleException When an error is encountered
-     *
-     * @return void
      */
-    abstract public function load(array $params);
+    abstract public function load(array $params): void;
 
     /**
      * returns the xml feed url for the source
      *
-     * @param array $params params for the source
+     * @param array<string, mixed> $params params for the source
      *
      * @return ?string url as xml
      */
-    public function getXmlUrl(array $params) {
+    public function getXmlUrl(array $params): ?string {
         return null;
     }
 
@@ -71,14 +84,14 @@ abstract class spout {
      *
      * @return ?string url as html
      */
-    abstract public function getHtmlUrl();
+    abstract public function getHtmlUrl(): ?string;
 
     /**
      * Returns the spout title
      *
      * @return ?string title as loaded by the spout
      */
-    public function getTitle() {
+    public function getTitle(): ?string {
         return null;
     }
 
@@ -87,22 +100,20 @@ abstract class spout {
      *
      * @return ?string icon as URL
      */
-    public function getIcon() {
+    public function getIcon(): ?string {
         return null;
     }
 
     /**
      * Returns list of items.
      *
-     * @return \Iterator<Item<mixed>> list of items
+     * @return iterable<Item<ItemExtraData>> list of items
      */
-    abstract public function getItems();
+    abstract public function getItems(): iterable;
 
     /**
      * destroy the plugin (prevent memory issues)
-     *
-     * @return void
      */
-    public function destroy() {
+    public function destroy(): void {
     }
 }

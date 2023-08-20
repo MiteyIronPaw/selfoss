@@ -1,10 +1,14 @@
 <?php
 
+declare(strict_types=1);
+
 namespace controllers;
 
 use helpers\Authentication;
+use helpers\Misc;
 use helpers\SpoutLoader;
 use helpers\View;
+use InvalidArgumentException;
 
 /**
  * Controller for sources handling
@@ -14,20 +18,11 @@ use helpers\View;
  * @author     Tobias Zeising <tobias.zeising@aditu.de>
  */
 class Sources {
-    /** @var Authentication authentication helper */
-    private $authentication;
-
-    /** @var \daos\Sources sources */
-    private $sourcesDao;
-
-    /** @var SpoutLoader spout loader */
-    private $spoutLoader;
-
-    /** @var \daos\Tags tags */
-    private $tagsDao;
-
-    /** @var View view helper */
-    private $view;
+    private Authentication $authentication;
+    private \daos\Sources $sourcesDao;
+    private SpoutLoader $spoutLoader;
+    private \daos\Tags $tagsDao;
+    private View $view;
 
     public function __construct(Authentication $authentication, \daos\Sources $sourcesDao, SpoutLoader $spoutLoader, \daos\Tags $tagsDao, View $view) {
         $this->authentication = $authentication;
@@ -40,10 +35,8 @@ class Sources {
     /**
      * list all available sources
      * json
-     *
-     * @return void
      */
-    public function show() {
+    public function show(): void {
         $this->authentication->needsLoggedIn();
 
         // get available spouts
@@ -66,10 +59,8 @@ class Sources {
     /**
      * add new source
      * json
-     *
-     * @return void
      */
-    public function add() {
+    public function add(): void {
         $this->authentication->needsLoggedIn();
 
         $spouts = $this->spoutLoader->all();
@@ -82,10 +73,8 @@ class Sources {
     /**
      * render spouts params
      * json
-     *
-     * @return void
      */
-    public function params() {
+    public function params(): void {
         $this->authentication->needsLoggedIn();
 
         if (!isset($_GET['spout'])) {
@@ -110,14 +99,14 @@ class Sources {
      * delete source
      * json
      *
-     * @param int $id ID of source to remove
-     *
-     * @return void
+     * @param string $id ID of source to remove
      */
-    public function remove($id) {
+    public function remove(string $id): void {
         $this->authentication->needsLoggedIn();
 
-        if (!$this->sourcesDao->isValid('id', $id)) {
+        try {
+            $id = Misc::forceId($id);
+        } catch (InvalidArgumentException $e) {
             $this->view->error('invalid id given');
         }
 
@@ -135,10 +124,8 @@ class Sources {
     /**
      * returns all available sources
      * json
-     *
-     * @return void
      */
-    public function listSources() {
+    public function listSources(): void {
         $this->authentication->needsLoggedIn();
 
         // load sources
@@ -156,10 +143,8 @@ class Sources {
     /**
      * returns all available spouts
      * json
-     *
-     * @return void
      */
-    public function spouts() {
+    public function spouts(): void {
         $this->authentication->needsLoggedIn();
 
         $spouts = $this->spoutLoader->all();
@@ -169,10 +154,8 @@ class Sources {
     /**
      * returns all sources with unread items
      * json
-     *
-     * @return void
      */
-    public function stats() {
+    public function stats(): void {
         $this->authentication->needsLoggedInOrPublicMode();
 
         // load sources

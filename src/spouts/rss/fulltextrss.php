@@ -1,16 +1,21 @@
 <?php
 
+declare(strict_types=1);
+
 namespace spouts\rss;
 
 use Graby\Graby;
+use GuzzleHttp\Psr7\Uri;
 use helpers\Configuration;
 use helpers\FeedReader;
+use helpers\HtmlString;
 use helpers\Image;
 use helpers\WebClient;
 use Http\Adapter\Guzzle7\Client as GuzzleAdapter;
 use Monolog\Logger;
 use SimplePie;
 use spouts\Item;
+use spouts\Parameter;
 
 /**
  * Plugin for fetching the news with fivefilters Full-Text RSS
@@ -20,37 +25,27 @@ use spouts\Item;
  * @author     Tobias Zeising <tobias.zeising@aditu.de>
  */
 class fulltextrss extends feed {
-    /** @var string name of spout */
-    public $name = 'RSS Feed (with content extraction)';
+    public string $name = 'RSS Feed (with content extraction)';
 
-    /** @var string description of this source type */
-    public $description = 'Use “Graby” library to get full content of feed posts instead of partial content provided by some websites.';
+    public string $description = 'Use “Graby” library to get full content of feed posts instead of partial content provided by some websites.';
 
-    /** @var array configurable parameters */
-    public $params = [
+    public array $params = [
         'url' => [
             'title' => 'URL',
-            'type' => 'url',
+            'type' => Parameter::TYPE_URL,
             'default' => '',
             'required' => true,
-            'validation' => ['notempty'],
+            'validation' => [Parameter::VALIDATION_NONEMPTY],
         ],
     ];
 
-    /** @var string tag for logger */
-    private static $loggerTag = 'selfoss.graby';
+    /** Tag for logger */
+    private static string $loggerTag = 'selfoss.graby';
 
-    /** @var Configuration configuration */
-    private $configuration;
-
-    /** @var ?Graby */
-    private $graby = null;
-
-    /** @var Logger */
-    private $logger;
-
-    /** @var WebClient */
-    private $webClient;
+    private Configuration $configuration;
+    private ?Graby $graby = null;
+    private Logger $logger;
+    private WebClient $webClient;
 
     public function __construct(Configuration $configuration, FeedReader $feed, Image $imageHelper, Logger $logger, WebClient $webClient) {
         parent::__construct($feed, $imageHelper, $logger);
@@ -63,21 +58,19 @@ class fulltextrss extends feed {
     /**
      * @return \Generator<Item<SimplePie\Item>> list of items
      */
-    public function getItems() {
-        foreach (parent::getItems() as $item) {
-            $url = self::removeTrackersFromUrl($item->getLink());
-            $newContent = $this->getFullContent($url, $item);
-            yield $item->withLink($url)->withContent($newContent);
+    public function getItems(): iterable {
+        foreach (parent::getItems() as $originalItem) {
+            $url = (string) self::removeTrackersFromUrl(new Uri($originalItem->getLink()));
+            yield $originalItem->withLink($url)->withContent(
+                fn(Item $item): HtmlString => $this->getFullContent($item->getLink(), $originalItem)
+            );
         }
     }
 
     /**
-     * @param string $url
-     * @param Item<SimplePie\Item> $item
-     *
-     * @return string
+     * @param Item<SimplePie\Item> $originalItem
      */
-    public function getFullContent($url, Item $item) {
+    public function getFullContent(string $url, Item $originalItem): HtmlString {
         if ($this->graby === null) {
             $this->graby = new Graby([
                 'extractor' => [
@@ -97,10 +90,10 @@ class fulltextrss extends feed {
         if ($response['status'] !== 200) {
             $this->logger->error('Failed loading page');
 
-            return '<p><strong>Failed to get web page</strong></p>' . $item->getContent();
+            return HtmlString::fromRaw('<p><strong>Failed to get web page</strong></p>' . $originalItem->getContent()->getRaw());
         }
 
-        $content = $response['html'];
+        $content = HtmlString::fromRaw($response['html']);
 
         return $content;
     }
@@ -109,41 +102,28 @@ class fulltextrss extends feed {
      * remove trackers from url
      *
      * @author Jean Baptiste Favre
-     *
-     * @param string $url
-     *
-     * @return string url
      */
-    private static function removeTrackersFromUrl($url) {
-        $url = parse_url($url);
-
-        // Next, rebuild URL
-        $real_url = $url['scheme'] . '://';
-        if (isset($url['user']) && isset($url['pass'])) {
-            $real_url .= $url['user'] . ':' . $url['pass'] . '@';
-        }
-        $real_url .= $url['host'] . $url['path'];
-
+    private static function removeTrackersFromUrl(Uri $uri): Uri {
         // Query string
-        if (isset($url['query'])) {
-            parse_str($url['query'], $q_array);
-            $real_query = [];
-            foreach ($q_array as $key => $value) {
-                // Remove utm_* parameters
-                if (strpos($key, 'utm_') === false) {
-                    $real_query[] = $key . '=' . $value;
-                }
-            }
-            $real_url .= '?' . implode('&', $real_query);
+        $query = $uri->getQuery();
+        if ($query !== '') {
+            $q_array = explode('&', $query);
+            // Remove utm_* parameters
+            $clean_query = array_filter(
+                $q_array,
+                fn(string $param): bool => !str_starts_with($param, 'utm_')
+            );
+            $uri = $uri->withQuery(implode('&', $clean_query));
         }
         // Fragment
-        if (isset($url['fragment'])) {
+        $fragment = $uri->getFragment();
+        if ($fragment !== '') {
             // Remove xtor=RSS anchor
-            if (strpos($url['fragment'], 'xtor=RSS') === false) {
-                $real_url .= '#' . $url['fragment'];
+            if (str_contains($fragment, 'xtor=RSS')) {
+                $uri = $uri->withFragment('');
             }
         }
 
-        return $real_url;
+        return $uri;
     }
 }

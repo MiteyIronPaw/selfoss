@@ -1,63 +1,55 @@
 <?php
 
+declare(strict_types=1);
+
 namespace spouts;
 
 use DateTimeInterface;
+use helpers\HtmlString;
 
 /**
  * Value object representing a source item (e.g. an article).
  *
- * @template Extra type of extra data
+ * @template-covariant Extra type of extra data
  */
 class Item {
     /** @var string an unique id for this item */
-    private $id;
+    private string $id;
 
-    /** @var string title */
-    private $title;
+    private HtmlString $title;
 
-    /** @var string content */
+    /** @var HtmlString|(callable(static): HtmlString) content */
     private $content;
 
-    /** @var ?string thumbnail */
-    private $thumbnail;
+    private ?string $thumbnail = null;
 
-    /** @var ?string icon */
+    /** @var (?string)|(callable(static): ?string) icon */
     private $icon;
 
-    /** @var string link */
-    private $link;
+    private string $link;
 
-    /** @var ?DateTimeInterface date */
-    private $date;
+    private ?DateTimeInterface $date = null;
 
-    /** @var ?string author */
-    private $author;
+    private ?string $author = null;
 
-    /** @var ?Extra extra data */
+    /** @var Extra extra data */
     private $extraData;
 
     /**
-     * @param string $id
-     * @param string $title
-     * @param string $content
-     * @param ?string $thumbnail
-     * @param ?string $icon
-     * @param string $link
-     * @param ?DateTimeInterface $date
-     * @param ?string $author
-     * @param ?Extra $extraData
+     * @param Extra $extraData
+     * @param HtmlString|(callable(static): HtmlString) $content
+     * @param (?string)|(callable(static): ?string) $icon
      */
     public function __construct(
-        $id,
-        $title,
+        string $id,
+        HtmlString $title,
         $content,
-        $thumbnail,
+        ?string $thumbnail,
         $icon,
-        $link,
-        $date,
-        $author,
-        $extraData = null
+        string $link,
+        ?DateTimeInterface $date,
+        ?string $author,
+        $extraData
     ) {
         $this->id = $id;
         $this->title = $title;
@@ -74,19 +66,15 @@ class Item {
      * Returns an ID for this article.
      *
      * It should be unique for the source.
-     *
-     * @return string
      */
-    public function getId() {
+    public function getId(): string {
         return $this->id;
     }
 
     /**
-     * @param string $id
-     *
-     * @return self
+     * @return static
      */
-    public function withId($id) {
+    public function withId(string $id): self {
         $modified = clone $this;
         $modified->id = $id;
 
@@ -98,19 +86,15 @@ class Item {
      *
      * If the spout allows HTML in the title, HTML special chars are expected to be decoded by the spout
      * (for instance when the spout feed is XML).
-     *
-     * @return string
      */
-    public function getTitle() {
+    public function getTitle(): HtmlString {
         return $this->title;
     }
 
     /**
-     * @param string $title
-     *
-     * @return self
+     * @return static
      */
-    public function withTitle($title) {
+    public function withTitle(HtmlString $title): self {
         $modified = clone $this;
         $modified->title = $title;
 
@@ -122,19 +106,24 @@ class Item {
      *
      * HTML special chars are expected to be decoded by the spout
      * (for instance when the spout feed is XML).
-     *
-     * @return string
      */
-    public function getContent() {
+    public function getContent(): HtmlString {
+        if (is_callable($this->content)) {
+            $oldContent = $this->content;
+            // Temporarily unset so that calling getContent from the callback does not create an infinite loop.
+            $this->content = HtmlString::fromRaw('');
+            $this->content = $oldContent($this);
+        }
+
         return $this->content;
     }
 
     /**
-     * @param string $content
+     * @param HtmlString|(callable(static): HtmlString) $content
      *
-     * @return self
+     * @return static
      */
-    public function withContent($content) {
+    public function withContent($content): self {
         $modified = clone $this;
         $modified->content = $content;
 
@@ -143,19 +132,15 @@ class Item {
 
     /**
      * Returns the URL of a thumbnail (for multimedia feeds).
-     *
-     * @return ?string
      */
-    public function getThumbnail() {
+    public function getThumbnail(): ?string {
         return $this->thumbnail;
     }
 
     /**
-     * @param ?string $thumbnail
-     *
-     * @return self
+     * @return static
      */
-    public function withThumbnail($thumbnail) {
+    public function withThumbnail(?string $thumbnail): self {
         $modified = clone $this;
         $modified->thumbnail = $thumbnail;
 
@@ -164,19 +149,24 @@ class Item {
 
     /**
      * Returns the URL for favicon of the article.
-     *
-     * @return ?string
      */
-    public function getIcon() {
+    public function getIcon(): ?string {
+        if (is_callable($this->icon)) {
+            $oldIcon = $this->icon;
+            // Temporarily unset so that calling getIcon from the callback does not create an infinite loop.
+            $this->icon = null;
+            $this->icon = $oldIcon($this);
+        }
+
         return $this->icon;
     }
 
     /**
-     * @param ?string $icon
+     * @param (?string)|(callable(static): ?string) $icon
      *
-     * @return self
+     * @return static
      */
-    public function withIcon($icon) {
+    public function withIcon($icon): self {
         $modified = clone $this;
         $modified->icon = $icon;
 
@@ -185,19 +175,15 @@ class Item {
 
     /**
      * Returns the direct link to the article.
-     *
-     * @return string
      */
-    public function getLink() {
+    public function getLink(): string {
         return $this->link;
     }
 
     /**
-     * @param string $link
-     *
-     * @return self
+     * @return static
      */
-    public function withLink($link) {
+    public function withLink(string $link): self {
         $modified = clone $this;
         $modified->link = $link;
 
@@ -206,19 +192,15 @@ class Item {
 
     /**
      * Returns the publication date of the article.
-     *
-     * @return ?DateTimeInterface
      */
-    public function getDate() {
+    public function getDate(): ?DateTimeInterface {
         return $this->date;
     }
 
     /**
-     * @param ?DateTimeInterface $date
-     *
-     * @return self
+     * @return static
      */
-    public function withDate(DateTimeInterface $date = null) {
+    public function withDate(?DateTimeInterface $date = null): self {
         $modified = clone $this;
         $modified->date = $date;
 
@@ -229,19 +211,15 @@ class Item {
      * Returns the author of the article.
      *
      * HTML special chars decoded, if applicable.
-     *
-     * @return ?string
      */
-    public function getAuthor() {
+    public function getAuthor(): ?string {
         return $this->author;
     }
 
     /**
-     * @param ?string $author
-     *
-     * @return self
+     * @return static
      */
-    public function withAuthor($author) {
+    public function withAuthor(?string $author): self {
         $modified = clone $this;
         $modified->author = $author;
 
@@ -264,7 +242,8 @@ class Item {
      *
      * @return Item<NewExtra>
      */
-    public function withExtraData($extraData) {
+    public function withExtraData($extraData): Item {
+        /** @var Item<NewExtra> */ // For PHPStan
         $modified = clone $this;
         $modified->extraData = $extraData;
 

@@ -1,16 +1,43 @@
 # selfoss news
 ## 2.20 – unreleased
 
-**This version currently requires PHP 7.2.5 or newer. (Will be increased later.)**
+**This version currently requires PHP 7.4 or newer. (Might be increased later.)**
+
+### New features
+- YouTube spout now accepts handles (starting with `@` sign). ([#1412](https://github.com/fossar/selfoss/pull/1412))
+- YouTube spout now includes the video description. ([#1412](https://github.com/fossar/selfoss/pull/1412))
+- Mastodon share button was added. Can be enabled by adding `m` to `share` and setting `mastodon` pointing to your chosen instance. ([#1421](https://github.com/fossar/selfoss/pull/1421))
+- Source filters can be negated, or limited to only title or only content. ([#1423](https://github.com/fossar/selfoss/pull/1423))
+- Sources can be filtered based on item’s author, URL or categories. ([#1423](https://github.com/fossar/selfoss/pull/1423), [#1424](https://github.com/fossar/selfoss/pull/1424))
+- Source filter expression is now validated whenever a source is modified. ([#1423](https://github.com/fossar/selfoss/pull/1423))
+- Garbage collection can be completely disabled by setting `items_lifetime=0`.
 
 ### Bug fixes
 - Configuration parser was changed to *raw* method, which relaxes the requirement to quote option values containing special characters in `config.ini`. ([#1371](https://github.com/fossar/selfoss/issues/1371))
 - Fix “Mark all as read” button not hiding marked articles in unread view, not updating the unread counts in menu properly, and not closing menu on mobile. ([#1388](https://github.com/fossar/selfoss/issues/1388)
 - Re-added “Next” button on smartphones. ([#1406](https://github.com/fossar/selfoss/issues/1406)
+- Fix compressed SVG (svgz) support. ([#1418](https://github.com/fossar/selfoss/pulls/1418)
+- Fix article links containing HTML-special characters. ([#1407](https://github.com/fossar/selfoss/issues/1407))
+- Reduce the chance of “Update all sources” button timing out. ([#1428](https://github.com/fossar/selfoss/pulls/1428), [#1430](https://github.com/fossar/selfoss/pulls/1430))
+- Fix a log-in loop in client. ([#1429](https://github.com/fossar/selfoss/pulls/1429))
+- Fix errors in Firefox’s private browsing mode.
+- Fix exporting OPML when there are tags that look like numbers ([#1439](https://github.com/fossar/selfoss/pull/1439))
+- Fix incorrect handling of tags in MySQL backend, which could result in OPML export being broken ([#1439](https://github.com/fossar/selfoss/pull/1439))
+
+### Customization changes
+- Custom spouts must explicitly pass `null` to `Item::__construct()` when they do not need the `extraData` argument. ([#1415](https://github.com/fossar/selfoss/pull/1415))
+- Custom spout parameter declarations should now use constants from `Parameter` interface. ([#1409](https://github.com/fossar/selfoss/pull/1409))
+- Custom spouts are expected to pass `HtmlString` object to items’ title and content. ([#1368](https://github.com/fossar/selfoss/pull/1368))
+- Spouts can fetch item contents lazily by passing a function as `content` to `Item`. ([#1413](https://github.com/fossar/selfoss/pull/1413))
+- Spouts’ `name`, `description` and `params` properties now require a type hint. ([#1425](https://github.com/fossar/selfoss/pull/1425))
 
 ### Other changes
 - `tidy` PHP extension is now required if you want to use “Content extractor” spout. ([#1392](https://github.com/fossar/selfoss/pull/1392))
 - Password hashing helper page will delegate the hashing to server again. ([#1401](https://github.com/fossar/selfoss/pull/1401))
+- Back-end source code is now checked using [PHPStan](https://phpstan.org/). ([#1409](https://github.com/fossar/selfoss/pull/1409))
+- Content Extraction spout will no longer try to extract content we have already extracted. ([#1413](https://github.com/fossar/selfoss/pull/1413))
+- Source filters are stricter, they need to start and end with a `/`. ([#1423](https://github.com/fossar/selfoss/pull/1423))
+- OPML importer has been merged into the React client. ([#1442](https://github.com/fossar/selfoss/pull/1442))
 
 ## 2.19 – 2022-10-12
 **This version requires PHP ~~5.6~~ 7.2 (see known regressions section) or newer. It is also the last version to support PHP 7.**

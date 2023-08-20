@@ -1,9 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace helpers;
 
 use Exception;
 use ReflectionClass;
+use ReflectionNamedType;
 
 /**
  * Configuration container.
@@ -19,156 +22,138 @@ class Configuration {
         'ftrssCustomDataDir',
     ];
 
+    public const LOGGER_LEVEL_EMERGENCY = 'EMERGENCY';
+    public const LOGGER_LEVEL_ALERT = 'ALERT';
+    public const LOGGER_LEVEL_CRITICAL = 'CRITICAL';
+    public const LOGGER_LEVEL_ERROR = 'ERROR';
+    public const LOGGER_LEVEL_WARNING = 'WARNING';
+    public const LOGGER_LEVEL_NOTICE = 'NOTICE';
+    public const LOGGER_LEVEL_INFO = 'INFO';
+    public const LOGGER_LEVEL_DEBUG = 'DEBUG';
+    public const LOGGER_LEVEL_NONE = 'NONE';
+
+    private const ALLOWED_LOGGER_LEVELS = [
+        self::LOGGER_LEVEL_EMERGENCY,
+        self::LOGGER_LEVEL_ALERT,
+        self::LOGGER_LEVEL_CRITICAL,
+        self::LOGGER_LEVEL_ERROR,
+        self::LOGGER_LEVEL_WARNING,
+        self::LOGGER_LEVEL_NOTICE,
+        self::LOGGER_LEVEL_INFO,
+        self::LOGGER_LEVEL_DEBUG,
+        self::LOGGER_LEVEL_NONE,
+    ];
+
     /** @var array<string, bool> Keeps track of options that have been changed. */
-    private $modifiedOptions = [];
+    private array $modifiedOptions = [];
 
     // Internal but overridable values.
 
-    /** @var int debugging level @internal */
-    public $debug = 0;
+    /** Debugging level @internal */
+    public int $debug = 0;
 
-    /** @var string @internal */
-    public $datadir = __DIR__ . '/../../data';
+    /** @internal */
+    public string $datadir = __DIR__ . '/../../data';
 
-    /** @var string @internal */
-    public $cache = '%datadir%/cache';
+    /** @internal */
+    public string $cache = '%datadir%/cache';
 
-    /** @var string @internal */
-    public $ftrssCustomDataDir = '%datadir%/fulltextrss';
+    /** @internal */
+    public string $ftrssCustomDataDir = '%datadir%/fulltextrss';
 
     // Rest of the values.
 
-    /** @var string */
-    public $dbType = 'sqlite';
+    public string $dbType = 'sqlite';
 
-    /** @var string */
-    public $dbFile = '%datadir%/sqlite/selfoss.db';
+    public string $dbFile = '%datadir%/sqlite/selfoss.db';
 
-    /** @var string */
-    public $dbHost = 'localhost';
+    public string $dbHost = 'localhost';
 
-    /** @var string */
-    public $dbDatabase = 'selfoss';
+    public string $dbDatabase = 'selfoss';
 
-    /** @var string */
-    public $dbUsername = 'root';
+    public string $dbUsername = 'root';
 
-    /** @var string */
-    public $dbPassword = '';
+    public string $dbPassword = '';
 
-    /** @var ?int */
-    public $dbPort = null;
+    public ?int $dbPort = null;
 
-    /** @var ?string */
-    public $dbSocket = null;
+    public ?string $dbSocket = null;
 
-    /** @var string */
-    public $dbPrefix = '';
+    public string $dbPrefix = '';
 
-    /** @var string */
-    public $loggerDestination = 'file:%datadir%/logs/default.log';
+    public string $loggerDestination = 'file:%datadir%/logs/default.log';
 
-    /** @var string */
-    public $loggerLevel = 'ERROR';
+    /** @var self::LOGGER_LEVEL_* */
+    public string $loggerLevel = 'ERROR';
 
-    /** @var int */
-    public $itemsPerpage = 50;
+    public int $itemsPerpage = 50;
 
-    /** @var int */
-    public $itemsLifetime = 30;
+    public int $itemsLifetime = 30;
 
-    /** @var string */
-    public $baseUrl = '';
+    public string $baseUrl = '';
 
-    /** @var string */
-    public $username = '';
+    public string $username = '';
 
-    /** @var string */
-    public $password = '';
+    public string $password = '';
 
-    /** @var string */
-    public $salt = 'lkjl1289';
+    public string $salt = 'lkjl1289';
 
-    /** @var bool */
-    public $public = false;
+    public bool $public = false;
 
-    /** @var string */
-    public $htmlTitle = 'selfoss';
+    public string $htmlTitle = 'selfoss';
 
-    /** @var string */
-    public $rssTitle = 'selfoss feed';
+    public string $rssTitle = 'selfoss feed';
 
-    /** @var int */
-    public $rssMaxItems = 300;
+    public int $rssMaxItems = 300;
 
-    /** @var bool */
-    public $rssMarkAsRead = false;
+    public bool $rssMarkAsRead = false;
 
-    /** @var string */
-    public $homepage = 'newest';
+    public string $homepage = 'newest';
 
-    /** @var ?string */
-    public $language = null;
+    public ?string $language = null;
 
-    /** @var bool */
-    public $autoMarkAsRead = false;
+    public bool $autoMarkAsRead = false;
 
-    /** @var bool */
-    public $autoCollapse = false;
+    public bool $autoCollapse = false;
 
-    /** @var bool */
-    public $autoStreamMore = true;
+    public bool $autoStreamMore = true;
 
-    /** @var bool */
-    public $openInBackgroundTab = false;
+    public bool $openInBackgroundTab = false;
 
-    /** @var string */
-    public $share = 'atfpde';
+    public string $share = 'atfpde';
 
-    /** @var string */
-    public $wallabag = '';
+    public string $wallabag = '';
 
-    /** @var string */
-    public $wallabagVersion = '2';
+    public string $wallabagVersion = '2';
 
-    /** @var ?string */
-    public $wordpress = null;
+    public ?string $wordpress = null;
 
-    /** @var bool */
-    public $allowPublicUpdateAccess = false;
+    public ?string $mastodon = null;
 
-    /** @var string */
-    public $unreadOrder = 'desc';
+    public bool $allowPublicUpdateAccess = false;
 
-    /** @var bool */
-    public $loadImagesOnMobile = false;
+    public string $unreadOrder = 'desc';
 
-    /** @var bool */
-    public $autoHideReadOnMobile = false;
+    public bool $loadImagesOnMobile = false;
 
-    /** @var string */
-    public $envPrefix = 'selfoss_';
+    public bool $autoHideReadOnMobile = false;
 
-    /** @var string */
-    public $camoDomain = '';
+    public string $envPrefix = 'selfoss_';
 
-    /** @var string */
-    public $camoKey = '';
+    public string $camoDomain = '';
 
-    /** @var bool */
-    public $scrollToArticleHeader = true;
+    public string $camoKey = '';
 
-    /** @var bool */
-    public $showThumbnails = true;
+    public bool $scrollToArticleHeader = true;
 
-    /** @var int */
-    public $readingSpeedWpm = 0;
+    public bool $showThumbnails = true;
+
+    public int $readingSpeedWpm = 0;
 
     /**
-     * @param ?string $configPath
      * @param array<string, string> $environment
      */
-    public function __construct($configPath = null, $environment = []) {
+    public function __construct(?string $configPath = null, array $environment = []) {
         // read config.ini, if it exists
         if ($configPath !== null && file_exists($configPath)) {
             $config = parse_ini_file($configPath, false, INI_SCANNER_RAW);
@@ -186,7 +171,9 @@ class Configuration {
 
         $reflection = new ReflectionClass(self::class);
         foreach ($reflection->getProperties() as $property) {
-            $configKey = strtolower(preg_replace('([[:upper:]]+)', '_$0', $property->getName()));
+            $underscoreSeparatedName = preg_replace('([[:upper:]]+)', '_$0', $property->getName());
+            assert($underscoreSeparatedName !== null, 'Regex must be valid');
+            $configKey = strtolower($underscoreSeparatedName);
 
             if (isset($environment[strtoupper($this->envPrefix . $configKey)])) {
                 // Prefer the value from environment variable if present.
@@ -204,22 +191,37 @@ class Configuration {
 
             $value = trim($value);
 
-            preg_match('(@var (?P<nullable>\??)(?P<type>[a-z]+))', $property->getDocComment(), $matches);
-            if ($matches['nullable'] === '?' && $value === '') {
+            $nullable = false;
+            $propertyType = null;
+            if (($doc = $property->getDocComment()) !== false && preg_match('(@var (?P<nullable>\??)(?P<type>[^\s]+))', $doc, $matches) === 1) {
+                $nullable = $matches['nullable'] === '?';
+                $propertyType = $matches['type'];
+            } else {
+                $type = $property->getType();
+                $nullable = $type !== null && $type->allowsNull();
+                if ($type instanceof ReflectionNamedType) {
+                    $propertyType = $type->getName();
+                }
+            }
+
+            if ($nullable && $value === '') {
                 // Keep the default value for empty nullables.
                 continue;
             }
 
             $propertyName = $property->getName();
-            $propertyType = $matches['type'];
             if ($propertyType === 'bool') {
                 $value = (bool) $value;
             } elseif ($propertyType === 'int') {
                 $value = (int) $value;
             } elseif ($propertyType === 'string') {
                 // Should already be a string.
+            } elseif ($propertyType === 'self::LOGGER_LEVEL_*') {
+                if (!in_array($value, self::ALLOWED_LOGGER_LEVELS, true)) {
+                    throw new Exception("Unsupported value “{$value}” for property “{$propertyName}”, must be one of " . implode(', ', self::ALLOWED_LOGGER_LEVELS) . '.', 1);
+                }
             } else {
-                throw new Exception("Unknown type “${propertyType}” for property “${propertyName}”.", 1);
+                throw new Exception("Unknown type “{$propertyType}” for property “{$propertyName}”.", 1);
             }
 
             $this->{$propertyName} = $value;
@@ -236,12 +238,8 @@ class Configuration {
 
     /**
      * Checks whether given configuration option has been changed.
-     *
-     * @param string $key
-     *
-     * @return bool
      */
-    public function isChanged($key) {
+    public function isChanged(string $key): bool {
         return isset($this->modifiedOptions[$key]);
     }
 }

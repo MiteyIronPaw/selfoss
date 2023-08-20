@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace helpers;
 
 use Exception;
@@ -7,6 +9,7 @@ use Fossar\GuzzleTranscoder\GuzzleTranscoder;
 use GuzzleHttp;
 use GuzzleHttp\HandlerStack;
 use Monolog\Logger;
+use Psr\Http\Message\ResponseInterface;
 
 /**
  * Helper class for web request
@@ -16,14 +19,9 @@ use Monolog\Logger;
  * @author     Alexandre Rossi <alexandre.rossi@gmail.com>
  */
 class WebClient {
-    /** @var Configuration configuration */
-    private $configuration;
-
-    /** @var ?GuzzleHttp\Client */
-    private $httpClient = null;
-
-    /** @var Logger */
-    private $logger;
+    private Configuration $configuration;
+    private ?GuzzleHttp\Client $httpClient = null;
+    private Logger $logger;
 
     public function __construct(Configuration $configuration, Logger $logger) {
         $this->configuration = $configuration;
@@ -32,15 +30,13 @@ class WebClient {
 
     /**
      * Provide a HTTP client for use by spouts
-     *
-     * @return GuzzleHttp\Client
      */
-    public function getHttpClient() {
+    public function getHttpClient(): GuzzleHttp\Client {
         if ($this->httpClient === null) {
             $stack = HandlerStack::create();
             $stack->push(new GuzzleTranscoder());
 
-            if ($this->configuration->loggerLevel === 'DEBUG') {
+            if ($this->configuration->loggerLevel === Configuration::LOGGER_LEVEL_DEBUG) {
                 if ($this->configuration->debug === 0) {
                     $logFormat = GuzzleHttp\MessageFormatter::SHORT;
                 } elseif ($this->configuration->debug === 1) {
@@ -81,7 +77,7 @@ class WebClient {
      *
      * @return string the user agent string for this spout
      */
-    public function getUserAgent($agentInfo = null) {
+    public function getUserAgent(?array $agentInfo = null): string {
         $userAgent = 'Selfoss/' . SELFOSS_VERSION;
 
         if ($agentInfo === null) {
@@ -118,11 +114,11 @@ class WebClient {
      * RedirectMiddleware will need to be enabled for this to work.
      *
      * @param string $url requested URL, to use as a fallback
-     * @param GuzzleHttp\Psr7\Response $response response to inspect
+     * @param ResponseInterface $response response to inspect
      *
      * @return string last URL we were redirected to
      */
-    public static function getEffectiveUrl($url, GuzzleHttp\Psr7\Response $response) {
+    public static function getEffectiveUrl(string $url, ResponseInterface $response): string {
         // Sequence of fetched URLs
         $urlStack = array_merge([$url], $response->getHeader(\GuzzleHttp\RedirectMiddleware::HISTORY_HEADER));
 

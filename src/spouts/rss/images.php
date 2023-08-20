@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace spouts\rss;
 
 use SimplePie;
@@ -13,16 +15,14 @@ use spouts\Item;
  * @author     Tobias Zeising <tobias.zeising@aditu.de>
  */
 class images extends feed {
-    /** @var string name of spout */
-    public $name = 'RSS Feed Images';
+    public string $name = 'RSS Feed Images';
 
-    /** @var string description of this source type */
-    public $description = 'Fetch images from given rss feed.';
+    public string $description = 'Fetch images from given rss feed.';
 
     /**
      * @return \Generator<Item<SimplePie\Item>> list of items
      */
-    public function getItems() {
+    public function getItems(): iterable {
         foreach (parent::getItems() as $item) {
             $thumbnail = $this->findThumbnail($item->getExtraData());
             if ($thumbnail !== null) {
@@ -33,10 +33,7 @@ class images extends feed {
         }
     }
 
-    /**
-     * @return ?string
-     */
-    private function findThumbnail(SimplePie\Item $item) {
+    private function findThumbnail(SimplePie\Item $item): ?string {
         // search enclosures (media tags)
         if (($firstEnclosure = $item->get_enclosure(0)) !== null) {
             // thumbnail given?

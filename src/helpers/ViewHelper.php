@@ -1,6 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace helpers;
+
+use DateTime;
 
 /**
  * Helper class for loading extern items
@@ -10,8 +14,7 @@ namespace helpers;
  * @author     Tobias Zeising <tobias.zeising@aditu.de>
  */
 class ViewHelper {
-    /** @var Configuration configuration */
-    private $configuration;
+    private Configuration $configuration;
 
     public function __construct(Configuration $configuration) {
         $this->configuration = $configuration;
@@ -26,19 +29,25 @@ class ViewHelper {
      *
      * @return string with highlited words
      */
-    public static function highlight($content, $searchWords) {
+    public static function highlight(string $content, string $searchWords): string {
         if (strlen(trim($searchWords)) === 0) {
             return $content;
         }
 
         if (preg_match('#^/(?P<regex>.+)/$#', $searchWords, $matches)) {
-            return preg_replace('/(?!<[^<>])(' . $matches[1] . ')(?![^<>]*>)/', '<span class="found">$0</span>', $content);
+            $content = preg_replace('/(?!<[^<>])(' . $matches[1] . ')(?![^<>]*>)/', '<span class="found">$0</span>', $content);
+
+            assert($content !== null, 'Regex must be valid.'); // For PHPStan: Will be picked up by error handler.
+
+            return $content;
         }
 
         $searchWords = \helpers\Search::splitTerms($searchWords);
 
         foreach ($searchWords as $word) {
-            $content = preg_replace('/(?!<[^<>])(' . preg_quote($word, '/') . ')(?![^<>]*>)/i', '<span class="found">$0</span>', $content);
+            $content = @preg_replace('/(?!<[^<>])(' . preg_quote($word, '/') . ')(?![^<>]*>)/i', '<span class="found">$0</span>', $content);
+
+            assert($content !== null, 'Regex must be valid.');
         }
 
         return $content;
@@ -52,8 +61,8 @@ class ViewHelper {
      *
      * @return string with replaced img tags
      */
-    public static function lazyimg($content) {
-        return preg_replace_callback("/<img(?P<pre>[^<]+)src=(?:['\"])(?P<src>[^\"']*)(?:['\"])(?P<post>[^<]*)>/i", function(array $matches) {
+    public static function lazyimg(string $content): string {
+        $content = preg_replace_callback("/<img(?P<pre>[^<]+)src=(?:['\"])(?P<src>[^\"']*)(?:['\"])(?P<post>[^<]*)>/i", function(array $matches) {
             $width = null;
             $height = null;
 
@@ -79,19 +88,10 @@ class ViewHelper {
 
             return "<img src=\"$placeholder\"{$matches['pre']}data-selfoss-src=\"{$matches['src']}\"{$matches['post']}>";
         }, $content);
-    }
 
-    /**
-     * Return ISO8601 formatted date
-     *
-     * @param string $datestr sql date
-     *
-     * @return string
-     */
-    public static function date_iso8601($datestr) {
-        $date = new \DateTime($datestr);
+        assert($content !== null, 'Regex must be valid');
 
-        return $date->format(\DateTime::ATOM);
+        return $content;
     }
 
     /**
@@ -101,29 +101,35 @@ class ViewHelper {
      *
      * @return string          item content
      */
-    public function camoflauge($content) {
+    public function camoflauge(string $content): string {
         if (empty($content)) {
             return $content;
         }
 
         $camo = new \WillWashburn\Phpamo\Phpamo($this->configuration->camoKey, $this->configuration->camoDomain);
 
-        return preg_replace_callback("/<img([^<]+)src=(['\"])([^\"']*)(['\"])([^<]*)>/i", function(array $matches) use ($camo) {
-            return '<img' . $matches[1] . 'src=' . $matches[2] . $camo->camoHttpOnly($matches[3]) . $matches[4] . $matches[5] . '>';
-        }, $content);
+        $content = preg_replace_callback(
+            "/<img([^<]+)src=(['\"])([^\"']*)(['\"])([^<]*)>/i",
+            fn(array $matches) => '<img' . $matches[1] . 'src=' . $matches[2] . $camo->camoHttpOnly($matches[3]) . $matches[4] . $matches[5] . '>',
+            $content
+        );
+
+        assert($content !== null, 'Regex must be valid');
+
+        return $content;
     }
 
     /**
      * Prepare entry as expected by the client.
      *
-     * @param array $item item to modify
+     * @param array{title: string, content: string, datetime: DateTime, updatetime: DateTime, sourcetitle: string, tags: string[]} $item item to modify
      * @param \controllers\Tags $tagsController tags controller
-     * @param ?array $tags list of tags
+     * @param ?array<array{tag: string, color: string}> $tags list of tags
      * @param ?string $search search query
      *
-     * @return array modified item
+     * @return array{title: string, strippedTitle: string, content: string, wordCount: int, lengthWithoutTags: int, datetime: string, updatetime: string, sourcetitle: string, tags: StringKeyedArray<array{backColor: string, foreColor: string}>} modified item
      */
-    public function preprocessEntry(array $item, \controllers\Tags $tagsController, array $tags = null, $search = null) {
+    public function preprocessEntry(array $item, \controllers\Tags $tagsController, ?array $tags = null, ?string $search = null): array {
         // parse tags and assign tag colors
         $item['tags'] = $tagsController->tagsAddColors($item['tags'], $tags);
 

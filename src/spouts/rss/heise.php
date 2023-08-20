@@ -1,6 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace spouts\rss;
+
+use spouts\Parameter;
 
 /**
  * Plugin for fetching the news from heise with the full text
@@ -11,17 +15,14 @@ namespace spouts\rss;
  * @author     Daniel Seither <post@tiwoc.de>
  */
 class heise extends fulltextrss {
-    /** @var string name of spout */
-    public $name = '[German] heise.de';
+    public string $name = '[German] heise.de';
 
-    /** @var string description of this source type */
-    public $description = 'Fetch the heise news with full content (not only the header as content).';
+    public string $description = 'Fetch the heise news with full content (not only the header as content).';
 
-    /** @var array configurable parameters */
-    public $params = [
+    public array $params = [
         'section' => [
             'title' => 'Section',
-            'type' => 'select',
+            'type' => Parameter::TYPE_SELECT,
             'values' => [
                 'main' => 'Hauptseite',
                 'ct' => "c't",
@@ -66,14 +67,11 @@ class heise extends fulltextrss {
         'hh' => 'https://www.heise.de/hardware-hacks/rss/hardware-hacks-atom.xml',
     ];
 
-    public function load(array $params) {
+    public function load(array $params): void {
         parent::load(['url' => $this->getXmlUrl($params)]);
     }
 
-    /**
-     * @return string
-     */
-    public function getXmlUrl(array $params) {
+    public function getXmlUrl(array $params): string {
         return self::FEED_URLS[$params['section']];
     }
 }

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace controllers\Items;
 
 use helpers\Authentication;
@@ -12,29 +14,14 @@ use helpers\ViewHelper;
  * Controller for synchronizing item statuses
  */
 class Sync {
-    /** @var Authentication authentication helper */
-    private $authentication;
-
-    /** @var Configuration configuration */
-    private $configuration;
-
-    /** @var \daos\Items items */
-    private $itemsDao;
-
-    /** @var \daos\Sources sources */
-    private $sourcesDao;
-
-    /** @var \controllers\Tags tags controller */
-    private $tagsController;
-
-    /** @var \daos\Tags tags */
-    private $tagsDao;
-
-    /** @var View view helper */
-    private $view;
-
-    /** @var ViewHelper */
-    private $viewHelper;
+    private Authentication $authentication;
+    private Configuration $configuration;
+    private \daos\Items $itemsDao;
+    private \daos\Sources $sourcesDao;
+    private \controllers\Tags $tagsController;
+    private \daos\Tags $tagsDao;
+    private View $view;
+    private ViewHelper $viewHelper;
 
     public function __construct(Authentication $authentication, Configuration $configuration, \daos\Items $itemsDao, \daos\Sources $sourcesDao, \controllers\Tags $tagsController, \daos\Tags $tagsDao, View $view, ViewHelper $viewHelper) {
         $this->authentication = $authentication;
@@ -50,10 +37,8 @@ class Sync {
     /**
      * returns updated database info (stats, item statuses)
      * json
-     *
-     * @return void
      */
-    public function sync() {
+    public function sync(): void {
         $this->authentication->needsLoggedInOrPublicMode();
 
         if (isset($_GET['since'])) {
@@ -67,10 +52,10 @@ class Sync {
         $since = new \DateTime($params['since']);
         $since->setTimeZone(new \DateTimeZone(date_default_timezone_get()));
 
-        $last_update = new \DateTime($this->itemsDao->lastUpdate());
+        $lastUpdate = $this->itemsDao->lastUpdate();
 
         $sync = [
-            'lastUpdate' => $last_update->format(\DateTime::ATOM),
+            'lastUpdate' => $lastUpdate !== null ? $lastUpdate->format(\DateTime::ATOM) : null,
         ];
 
         if (array_key_exists('itemsSinceId', $params)) {
@@ -89,13 +74,14 @@ class Sync {
                 $itemsHowMany = $this->configuration->itemsPerpage;
                 if (array_key_exists('itemsHowMany', $params)
                     && is_int($params['itemsHowMany'])) {
-                    $itemsHowMany = min($params['itemsHowMany'],
-                                        2 * $itemsHowMany);
+                    $itemsHowMany = min(
+                        $params['itemsHowMany'],
+                        2 * $itemsHowMany
+                    );
                 }
 
                 $sync['newItems'] = function() use ($sinceId, $notBefore, $since, $itemsHowMany) {
-                    foreach ($this->itemsDao->sync($sinceId, $notBefore, $since, $itemsHowMany)
-                             as $newItem) {
+                    foreach ($this->itemsDao->sync($sinceId, $notBefore, $since, $itemsHowMany) as $newItem) {
                         yield $this->viewHelper->preprocessEntry($newItem, $this->tagsController);
                     }
                 };
@@ -104,7 +90,7 @@ class Sync {
             }
         }
 
-        if ($last_update > $since) {
+        if ($lastUpdate === null || $lastUpdate > $since) {
             $sync['stats'] = $this->itemsDao->stats();
 
             if (array_key_exists('tags', $params) && $params['tags'] == 'true') {
@@ -125,10 +111,8 @@ class Sync {
 
     /**
      * Items statuses bulk update.
-     *
-     * @return void
      */
-    public function updateStatuses() {
+    public function updateStatuses(): void {
         $this->authentication->needsLoggedIn();
 
         if (isset($_POST['updatedStatuses'])

@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace daos;
 
 use DateTime;
@@ -8,44 +10,52 @@ use DateTime;
  * Object holding parameters for querying items.
  */
 final class ItemOptions {
-    /** @var ?int @readonly */
-    public $offset = 0;
+    /** @readonly */
+    public ?int $offset = 0;
 
-    /** @var ?string @readonly */
-    public $search = null;
+    /** @readonly */
+    public ?string $search = null;
 
-    /** @var ?int maximum number of items to fetch from the database (unbounded) @readonly */
-    public $pageSize = null;
+    /**
+     * Maximum number of items to fetch from the database (unbounded)
+     *
+     * @readonly
+     */
+    public ?int $pageSize = null;
 
-    /** @var ?DateTime @readonly */
-    public $fromDatetime = null;
+    /** @readonly */
+    public ?DateTime $fromDatetime = null;
 
-    /** @var ?int @readonly */
-    public $fromId = null;
+    /** @readonly */
+    public ?int $fromId = null;
 
-    /** @var ?DateTime @readonly */
-    public $updatedSince = null;
+    /** @readonly */
+    public ?DateTime $updatedSince = null;
 
-    /** @var ?string @readonly */
-    public $tag = null;
+    /** @readonly */
+    public ?string $tag = null;
 
-    /** @var 'starred'|'unread'|null @readonly */
-    public $filter = null;
+    /**
+     * @var 'starred'|'unread'|null
+     *
+     * @readonly
+     */
+    public ?string $filter = null;
 
-    /** @var ?int @readonly */
-    public $source = null;
+    /** @readonly */
+    public ?int $source = null;
 
     /** @var int[] @readonly */
-    public $extraIds = [];
+    public array $extraIds = [];
 
     /**
      * Creates new ItemOptions object ensuring the values are proper types.
      *
-     * @param array $data
+     * @param array<string, mixed> $data
      *
      * @return static
      */
-    public static function fromUser($data) {
+    public static function fromUser(array $data): self {
         $options = new static();
 
         if (isset($data['offset']) && is_numeric($data['offset'])) {
@@ -85,9 +95,10 @@ final class ItemOptions {
         }
 
         if (isset($data['extraIds']) && is_array($data['extraIds'])) {
-            $options->extraIds = array_map(function($val) {
-                return (int) $val;
-            }, $data['extraIds']);
+            $options->extraIds = array_map(
+                fn($val) => (int) $val,
+                $data['extraIds']
+            );
         }
 
         return $options;

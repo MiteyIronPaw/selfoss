@@ -1,10 +1,16 @@
 <?php
 
+declare(strict_types=1);
+
 namespace controllers;
 
 use daos\ItemOptions;
+use DateTimeInterface;
 use helpers\Authentication;
+use helpers\Misc;
+use helpers\Request;
 use helpers\View;
+use InvalidArgumentException;
 
 /**
  * Controller for item handling
@@ -14,18 +20,20 @@ use helpers\View;
  * @author     Tobias Zeising <tobias.zeising@aditu.de>
  */
 class Items {
-    /** @var Authentication authentication helper */
-    private $authentication;
+    private Authentication $authentication;
+    private \daos\Items $itemsDao;
+    private Request $request;
+    private View $view;
 
-    /** @var \daos\Items items */
-    private $itemsDao;
-
-    /** @var View view helper */
-    private $view;
-
-    public function __construct(Authentication $authentication, \daos\Items $itemsDao, View $view) {
+    public function __construct(
+        Authentication $authentication,
+        \daos\Items $itemsDao,
+        Request $request,
+        View $view
+    ) {
         $this->authentication = $authentication;
         $this->itemsDao = $itemsDao;
+        $this->request = $request;
         $this->view = $view;
     }
 
@@ -33,32 +41,34 @@ class Items {
      * mark items as read. Allows one id or an array of ids
      * json
      *
-     * @param ?int $itemId ID of item to mark as read
-     *
-     * @return void
+     * @param ?string $itemId ID of item to mark as read
      */
-    public function mark($itemId = null) {
+    public function mark(?string $itemId = null): void {
         $this->authentication->needsLoggedIn();
 
-        $lastid = null;
+        $ids = null;
         if ($itemId !== null) {
-            $lastid = $itemId;
+            $ids = [$itemId];
         } else {
-            $contentType = $_SERVER['CONTENT_TYPE'] ?? '';
-            if (strpos($contentType, 'application/json') === 0) {
-                $body = file_get_contents('php://input');
-                $lastid = json_decode($body, true);
-            } elseif (isset($_POST['ids'])) {
-                $lastid = $_POST['ids'];
+            $ids = $this->request->getData();
+            if (!is_array($ids)) {
+                $this->view->error('The request body needs to contain a list of numbers.');
+            }
+
+            // Legacy format $_POST['ids'].
+            if (isset($ids['ids'])) {
+                $ids = $ids['ids'];
             }
         }
 
         // validate id or ids
-        if (!$this->itemsDao->isValid('id', $lastid)) {
+        try {
+            $ids = Misc::forceIds($ids);
+        } catch (InvalidArgumentException $e) {
             $this->view->error('invalid id');
         }
 
-        $this->itemsDao->mark($lastid);
+        $this->itemsDao->mark($ids);
 
         $return = [
             'success' => true,
@@ -71,18 +81,18 @@ class Items {
      * mark item as unread
      * json
      *
-     * @param int $itemId id of an item to mark as unread
-     *
-     * @return void
+     * @param string $itemId id of an item to mark as unread
      */
-    public function unmark($itemId) {
+    public function unmark(string $itemId): void {
         $this->authentication->needsLoggedIn();
 
-        if (!$this->itemsDao->isValid('id', $itemId)) {
+        try {
+            $itemId = Misc::forceId($itemId);
+        } catch (InvalidArgumentException $e) {
             $this->view->error('invalid id');
         }
 
-        $this->itemsDao->unmark($itemId);
+        $this->itemsDao->unmark([(int) $itemId]);
 
         $this->view->jsonSuccess([
             'success' => true,
@@ -93,14 +103,14 @@ class Items {
      * starr item
      * json
      *
-     * @param int $itemId id of an item to starr
-     *
-     * @return void
+     * @param string $itemId id of an item to starr
      */
-    public function starr($itemId) {
+    public function starr(string $itemId): void {
         $this->authentication->needsLoggedIn();
 
-        if (!$this->itemsDao->isValid('id', $itemId)) {
+        try {
+            $itemId = Misc::forceId($itemId);
+        } catch (InvalidArgumentException $e) {
             $this->view->error('invalid id');
         }
 
@@ -114,14 +124,14 @@ class Items {
      * unstarr item
      * json
      *
-     * @param int $itemId id of an item to unstarr
-     *
-     * @return void
+     * @param string $itemId id of an item to unstarr
      */
-    public function unstarr($itemId) {
+    public function unstarr(string $itemId): void {
         $this->authentication->needsLoggedIn();
 
-        if (!$this->itemsDao->isValid('id', $itemId)) {
+        try {
+            $itemId = Misc::forceId($itemId);
+        } catch (InvalidArgumentException $e) {
             $this->view->error('invalid id');
         }
 
@@ -134,10 +144,8 @@ class Items {
     /**
      * returns items as json string
      * json
-     *
-     * @return void
      */
-    public function listItems() {
+    public function listItems(): void {
         $this->authentication->needsLoggedInOrPublicMode();
 
         // parse params
@@ -148,11 +156,9 @@ class Items {
 
         $items = array_map(function(array $item) {
             $stringifiedDates = [
-                'datetime' => $item['datetime']->format(\DateTime::ATOM),
+                'datetime' => $item['datetime']->format(DateTimeInterface::ATOM),
+                'updatetime' => $item['updatetime']->format(DateTimeInterface::ATOM),
             ];
-            if (!empty($item['updatetime'])) {
-                $stringifiedDates['updatetime'] = $item['updatetime']->format(\DateTime::ATOM);
-            }
 
             return array_merge($item, $stringifiedDates);
         }, $items);

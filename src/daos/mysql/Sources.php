@@ -1,9 +1,16 @@
 <?php
 
+declare(strict_types=1);
+
 namespace daos\mysql;
 
 use daos\DatabaseInterface;
+use Exception;
 use helpers\Configuration;
+use function json_encode;
+use const JSON_ERROR_NONE;
+use function json_last_error;
+use function json_last_error_msg;
 
 /**
  * Class for accessing persistent saved sources -- mysql
@@ -14,13 +21,10 @@ use helpers\Configuration;
  */
 class Sources implements \daos\SourcesInterface {
     /** @var class-string SQL helper */
-    protected static $stmt = Statements::class;
+    protected static string $stmt = Statements::class;
 
-    /** @var Configuration configuration */
-    private $configuration;
-
-    /** @var DatabaseInterface database connection */
-    protected $database;
+    private Configuration $configuration;
+    protected DatabaseInterface $database;
 
     public function __construct(Configuration $configuration, DatabaseInterface $database) {
         $this->configuration = $configuration;
@@ -30,23 +34,25 @@ class Sources implements \daos\SourcesInterface {
     /**
      * add new source
      *
-     * @param string $title
      * @param string[] $tags
-     * @param string $filter
      * @param string $spout the source type
-     * @param array $params depends from spout
+     * @param array<string, mixed> $params spout-specific parameters
      *
      * @return int new id
      */
-    public function add($title, array $tags, $filter, $spout, array $params) {
-        $stmt = static::$stmt;
+    public function add(string $title, array $tags, ?string $filter, string $spout, array $params): int {
+        $params = @json_encode($params);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new Exception(json_last_error_msg(), json_last_error());
+        }
+        assert($params !== false); // For PHPStan: Exception would be thrown when the function returns false.
 
         return $this->database->insert('INSERT INTO ' . $this->configuration->dbPrefix . 'sources (title, tags, filter, spout, params) VALUES (:title, :tags, :filter, :spout, :params)', [
             ':title' => trim($title),
-            ':tags' => $stmt::csvRow($tags),
+            ':tags' => static::$stmt::csvRow($tags),
             ':filter' => $filter,
             ':spout' => $spout,
-            ':params' => htmlentities(json_encode($params)),
+            ':params' => htmlentities($params),
         ]);
     }
 
@@ -56,32 +62,30 @@ class Sources implements \daos\SourcesInterface {
      * @param int $id the source id
      * @param string $title new title
      * @param string[] $tags new tags
-     * @param string $filter
      * @param string $spout new spout
-     * @param array $params the new params
-     *
-     * @return void
+     * @param array<string, mixed> $params the new params
      */
-    public function edit($id, $title, array $tags, $filter, $spout, array $params) {
-        $stmt = static::$stmt;
+    public function edit(int $id, string $title, array $tags, ?string $filter, string $spout, array $params): void {
+        $params = @json_encode($params);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new Exception(json_last_error_msg(), json_last_error());
+        }
+        assert($params !== false); // For PHPStan: Exception would be thrown when the function returns false.
+
         $this->database->exec('UPDATE ' . $this->configuration->dbPrefix . 'sources SET title=:title, tags=:tags, filter=:filter, spout=:spout, params=:params WHERE id=:id', [
             ':title' => trim($title),
-            ':tags' => $stmt::csvRow($tags),
+            ':tags' => static::$stmt::csvRow($tags),
             ':filter' => $filter,
             ':spout' => $spout,
-            ':params' => htmlentities(json_encode($params)),
+            ':params' => htmlentities($params),
             ':id' => $id,
         ]);
     }
 
     /**
      * delete source
-     *
-     * @param int $id
-     *
-     * @return void
      */
-    public function delete($id) {
+    public function delete(int $id): void {
         $this->database->exec('DELETE FROM ' . $this->configuration->dbPrefix . 'sources WHERE id=:id', [':id' => $id]);
 
         // delete items of this source
@@ -93,10 +97,8 @@ class Sources implements \daos\SourcesInterface {
      *
      * @param int $id the source id
      * @param string $error error message
-     *
-     * @return void
      */
-    public function error($id, $error) {
+    public function error(int $id, string $error): void {
         if (strlen($error) === 0) {
             $arr = [
                 ':id' => $id,
@@ -118,62 +120,85 @@ class Sources implements \daos\SourcesInterface {
      *
      * @param int $id the source id
      * @param ?int $lastEntry timestamp of the newest item or NULL when no items were added
-     *
-     * @return void
      */
-    public function saveLastUpdate($id, $lastEntry) {
-        $this->database->exec('UPDATE ' . $this->configuration->dbPrefix . 'sources SET lastupdate=:lastupdate WHERE id=:id',
+    public function saveLastUpdate(int $id, ?int $lastEntry): void {
+        $this->database->exec(
+            'UPDATE ' . $this->configuration->dbPrefix . 'sources SET lastupdate=:lastupdate WHERE id=:id',
             [
                 ':id' => $id,
                 ':lastupdate' => time(),
-            ]);
+            ]
+        );
 
         if ($lastEntry !== null) {
-            $this->database->exec('UPDATE ' . $this->configuration->dbPrefix . 'sources SET lastentry=:lastentry WHERE id=:id',
+            $this->database->exec(
+                'UPDATE ' . $this->configuration->dbPrefix . 'sources SET lastentry=:lastentry WHERE id=:id',
                 [
                     ':id' => $id,
                     ':lastentry' => $lastEntry,
-                ]);
+                ]
+            );
         }
+    }
+
+    /**
+     * Gets the number of sources.
+     */
+    public function count(): int {
+        $ret = $this->database->exec('SELECT COUNT(*) AS amount FROM ' . $this->configuration->dbPrefix . 'sources');
+
+        return (int) $ret[0]['amount'];
     }
 
     /**
      * returns all sources
      *
-     * @return mixed all sources
+     * @return array<array{id: int, title: string, tags: string, spout: string, params: string, filter: ?string, error: ?string, lastupdate: ?int, lastentry: ?int}> all sources
      */
-    public function getByLastUpdate() {
+    public function getByLastUpdate(): array {
         $ret = $this->database->exec('SELECT id, title, tags, spout, params, filter, error, lastupdate, lastentry FROM ' . $this->configuration->dbPrefix . 'sources ORDER BY lastupdate ASC');
+        $ret = static::$stmt::ensureRowTypes($ret, [
+            'id' => DatabaseInterface::PARAM_INT,
+            'lastupdate' => DatabaseInterface::PARAM_INT | DatabaseInterface::PARAM_NULL,
+            'lastentry' => DatabaseInterface::PARAM_INT | DatabaseInterface::PARAM_NULL,
+        ]);
 
         return $ret;
     }
 
     /**
-     * returns specified source (null if it doesnt exist)
-     * or all sources if no id specified
+     * Returns source with given id (or null if it doesnt exist).
      *
-     * @param ?int $id specification of source id
-     *
-     * @return ?mixed specified source or all sources
+     * @return ?array{id: int, title: string, tags: string, spout: string, params: string, filter: ?string, error: ?string, lastupdate: ?int, lastentry: ?int}
      */
-    public function get($id = null) {
-        $stmt = static::$stmt;
-        // select source by id if specified or return all sources
-        if (isset($id)) {
-            $ret = $this->database->exec('SELECT id, title, tags, spout, params, filter, error, lastupdate, lastentry FROM ' . $this->configuration->dbPrefix . 'sources WHERE id=:id', [':id' => $id]);
-            $ret = $stmt::ensureRowTypes($ret, ['id' => DatabaseInterface::PARAM_INT]);
-            if (isset($ret[0])) {
-                $ret = $ret[0];
-            } else {
-                $ret = null;
-            }
-        } else {
-            $ret = $this->database->exec('SELECT id, title, tags, spout, params, filter, error, lastupdate, lastentry FROM ' . $this->configuration->dbPrefix . 'sources ORDER BY error DESC, lower(title) ASC');
-            $ret = $stmt::ensureRowTypes($ret, [
-                'id' => DatabaseInterface::PARAM_INT,
-                'tags' => DatabaseInterface::PARAM_CSV,
-            ]);
+    public function get(int $id): ?array {
+        $ret = $this->database->exec('SELECT id, title, tags, spout, params, filter, error, lastupdate, lastentry FROM ' . $this->configuration->dbPrefix . 'sources WHERE id=:id', [':id' => $id]);
+        $ret = static::$stmt::ensureRowTypes($ret, [
+            'id' => DatabaseInterface::PARAM_INT,
+            'lastupdate' => DatabaseInterface::PARAM_INT | DatabaseInterface::PARAM_NULL,
+            'lastentry' => DatabaseInterface::PARAM_INT | DatabaseInterface::PARAM_NULL,
+        ]);
+
+        if (count($ret) > 0) {
+            return $ret[0];
         }
+
+        return null;
+    }
+
+    /**
+     * Returns specified source all sources.
+     *
+     * @return array<array{id: int, title: string, tags: string[], spout: string, params: string, filter: ?string, error: ?string, lastupdate: ?int, lastentry: ?int}>
+     */
+    public function getAll(): array {
+        $ret = $this->database->exec('SELECT id, title, tags, spout, params, filter, error, lastupdate, lastentry FROM ' . $this->configuration->dbPrefix . 'sources ORDER BY error DESC, lower(title) ASC');
+        $ret = static::$stmt::ensureRowTypes($ret, [
+            'id' => DatabaseInterface::PARAM_INT,
+            'tags' => DatabaseInterface::PARAM_CSV,
+            'lastupdate' => DatabaseInterface::PARAM_INT | DatabaseInterface::PARAM_NULL,
+            'lastentry' => DatabaseInterface::PARAM_INT | DatabaseInterface::PARAM_NULL,
+        ]);
 
         return $ret;
     }
@@ -181,19 +206,18 @@ class Sources implements \daos\SourcesInterface {
     /**
      * returns all sources including unread count
      *
-     * @return mixed all sources
+     * @return array<array{id: int, title: string, unread: int}> all sources
      */
-    public function getWithUnread() {
-        $stmt = static::$stmt;
+    public function getWithUnread(): array {
         $ret = $this->database->exec('SELECT
             sources.id, sources.title, COUNT(items.id) AS unread
             FROM ' . $this->configuration->dbPrefix . 'sources AS sources
             LEFT OUTER JOIN ' . $this->configuration->dbPrefix . 'items AS items
-                 ON (items.source=sources.id AND ' . $stmt::isTrue('items.unread') . ')
+                 ON (items.source=sources.id AND ' . static::$stmt::isTrue('items.unread') . ')
             GROUP BY sources.id, sources.title
             ORDER BY lower(sources.title) ASC');
 
-        return $stmt::ensureRowTypes($ret, [
+        return static::$stmt::ensureRowTypes($ret, [
             'id' => DatabaseInterface::PARAM_INT,
             'unread' => DatabaseInterface::PARAM_INT,
         ]);
@@ -202,10 +226,9 @@ class Sources implements \daos\SourcesInterface {
     /**
      * returns all sources including last icon
      *
-     * @return mixed all sources
+     * @return array<array{id: int, title: string, tags: string[], spout: string, params: string, filter: ?string, error: ?string, lastentry: ?int, icon: ?string}> all sources
      */
-    public function getWithIcon() {
-        $stmt = static::$stmt;
+    public function getWithIcon(): array {
         $ret = $this->database->exec('SELECT
                 sources.id, sources.title, sources.tags, sources.spout,
                 sources.params, sources.filter, sources.error, sources.lastentry,
@@ -221,40 +244,21 @@ class Sources implements \daos\SourcesInterface {
                  WHERE items.id=icons.maxid AND items.source=icons.source
                  ) AS sourceicons
                 ON sources.id=sourceicons.source
-            ORDER BY ' . $stmt::nullFirst('sources.error', 'DESC') . ', lower(sources.title)');
+            ORDER BY ' . static::$stmt::nullFirst('sources.error', 'DESC') . ', lower(sources.title)');
 
-        return $stmt::ensureRowTypes($ret, [
+        return static::$stmt::ensureRowTypes($ret, [
             'id' => DatabaseInterface::PARAM_INT,
             'tags' => DatabaseInterface::PARAM_CSV,
+            'lastentry' => DatabaseInterface::PARAM_INT | DatabaseInterface::PARAM_NULL,
         ]);
-    }
-
-    /**
-     * test if the value of a specified field is valid
-     *
-     * @param   string      $name
-     * @param   mixed       $value
-     *
-     * @return  bool
-     */
-    public function isValid($name, $value) {
-        $return = false;
-
-        switch ($name) {
-        case 'id':
-            $return = is_numeric($value);
-            break;
-        }
-
-        return $return;
     }
 
     /**
      * returns all tags
      *
-     * @return mixed all sources
+     * @return string[] all sources
      */
-    public function getAllTags() {
+    public function getAllTags(): array {
         $result = $this->database->exec('SELECT tags FROM ' . $this->configuration->dbPrefix . 'sources');
         $tags = [];
         foreach ($result as $res) {
@@ -268,11 +272,9 @@ class Sources implements \daos\SourcesInterface {
     /**
      * returns tags of a source
      *
-     * @param int $id
-     *
-     * @return mixed tags of a source
+     * @return string[] tags of a source
      */
-    public function getTags($id) {
+    public function getTags(int $id): array {
         $result = $this->database->exec('SELECT tags FROM ' . $this->configuration->dbPrefix . 'sources WHERE id=:id', [':id' => $id]);
         $tags = [];
         $tags = array_merge($tags, explode(',', $result[0]['tags']));
@@ -285,18 +287,23 @@ class Sources implements \daos\SourcesInterface {
      * test if a source is already present using title, spout and params.
      * if present returns the id, else returns 0
      *
-     * @param  string  $title
-     * @param  string  $spout the source type
-     * @param  array   $params depends from spout
+     * @param string $spout the source type
+     * @param array<string, mixed> $params spout-specific parameters
      *
      * @return int id if any record is found
      */
-    public function checkIfExists($title, $spout, array $params) {
+    public function checkIfExists(string $title, string $spout, array $params): int {
+        $params = @json_encode($params);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new Exception(json_last_error_msg(), json_last_error());
+        }
+        assert($params !== false); // For PHPStan: Exception would be thrown when the function returns false.
+
         // Check if a entry exists with same title, spout and params
         $result = $this->database->exec('SELECT id FROM ' . $this->configuration->dbPrefix . 'sources WHERE title=:title AND spout=:spout AND params=:params', [
             ':title' => trim($title),
             ':spout' => $spout,
-            ':params' => htmlentities(json_encode($params)),
+            ':params' => htmlentities($params),
         ]);
         if ($result) {
             return $result[0]['id'];

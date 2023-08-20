@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace controllers;
 
 use helpers\Authentication;
@@ -10,14 +12,9 @@ use helpers\View;
  * Controller for instance information API
  */
 class About {
-    /** @var Authentication authentication helper */
-    private $authentication;
-
-    /** @var Configuration configuration */
-    private $configuration;
-
-    /** @var View view helper */
-    private $view;
+    private Authentication $authentication;
+    private Configuration $configuration;
+    private View $view;
 
     public function __construct(Authentication $authentication, Configuration $configuration, View $view) {
         $this->authentication = $authentication;
@@ -28,10 +25,8 @@ class About {
     /**
      * Provide information about the selfoss instance.
      * json
-     *
-     * @return void
      */
-    public function about() {
+    public function about(): void {
         $wallabag = !empty($this->configuration->wallabag) ? [
             'url' => $this->configuration->wallabag, // string
             'version' => $this->configuration->wallabagVersion, // int
@@ -45,6 +40,7 @@ class About {
                 'share' => $this->configuration->share, // string
                 'wallabag' => $wallabag, // ?array
                 'wordpress' => $this->configuration->wordpress, // ?string
+                'mastodon' => $this->configuration->mastodon, // ?string
                 'autoMarkAsRead' => $this->configuration->autoMarkAsRead, // bool
                 'autoCollapse' => $this->configuration->autoCollapse, // bool
                 'autoStreamMore' => $this->configuration->autoStreamMore, // bool

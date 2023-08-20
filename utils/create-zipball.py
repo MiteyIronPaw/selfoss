@@ -7,8 +7,8 @@ import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
+from typing import Callable
 
-logger = logging.getLogger('create-zipfile')
 
 DISALLOWED_FILENAME_PATTERNS = list(map(re.compile, [
     r'^\.git(hub|ignore|attributes|keep)$',
@@ -39,7 +39,6 @@ DISALLOWED_DEST_PATTERNS = list(map(re.compile, [
     r'^vendor/simplepie/simplepie/library$',
     r'^vendor/composer/installed\.json$',
     r'(?i)^vendor/[^/]+/[^/]+/(test|doc)s?',
-    r'^vendor/[^/]+/[^/]+/\.git(/|$)',
     r'^vendor/smalot/pdfparser/samples',
     r'^vendor/smalot/pdfparser/src/Smalot/PdfParser/Tests',
 ]))
@@ -56,31 +55,40 @@ def is_not_unimportant(dest: Path) -> bool:
     return allowed
 
 class ZipFile(zipfile.ZipFile):
-    def directory(self, name, allowed=None):
-        if allowed is None:
-            allowed = lambda item: True
+    def create_directory_entry(self, path: str) -> None:
+        # Directories are empty files whose path ends with a slash.
+        # https://mail.python.org/pipermail/python-list/2003-June/205859.html
+        self.writestr(str(self.prefix / path) + '/', '')
+
+    def directory(self, name: str, allowed: Callable[[Path], bool] = lambda item: True) -> None:
+        self.create_directory_entry(name)
 
         for root, dirs, files in os.walk(name):
             root = Path(root)
 
+            if not allowed(root):
+                # Do not traverse child directories.
+                dirs.clear()
+                continue
+
             for directory in dirs:
-                directory = Path(directory)
                 path = root / directory
 
                 if allowed(path):
-                    # Directories are empty files whose path ends with a slash.
-                    # https://mail.python.org/pipermail/python-list/2003-June/205859.html
-                    self.writestr(str(self.prefix / path) + '/', '')
+                    self.create_directory_entry(path)
 
             for file in files:
                 path = root / file
 
                 if allowed(path):
                     self.write(path, self.prefix / path)
-    def file(self, name):
+    def file(self, name: str) -> None:
         self.write(name, self.prefix / name)
 
-def main():
+def main() -> None:
+    logging.basicConfig(level=logging.DEBUG)
+    logger = logging.getLogger('create-zipfile')
+
     source_dir = Path.cwd()
     with tempfile.TemporaryDirectory(prefix='selfoss-dist-') as temp_dir:
         dirty = subprocess.run(['git','-C', source_dir, 'diff-index', '--quiet', 'HEAD']).returncode == 1
@@ -122,18 +130,16 @@ def main():
         with ZipFile(source_dir / filename, 'w', zipfile.ZIP_DEFLATED) as archive:
             archive.prefix = Path('selfoss')
 
+            archive.create_directory_entry('')
+
             archive.directory('src/')
             archive.directory('vendor/', is_not_unimportant)
 
-            # pack all bundles and bundled assets
+            # pack all bundles and bundled client assets
             archive.directory('public/')
 
-            # copy data: only directory structure and .htaccess for deny
-            archive.directory('data/', lambda file: file.is_dir())
-            archive.file('data/cache/.htaccess')
-            archive.file('data/logs/.htaccess')
-            archive.file('data/sqlite/.htaccess')
-            archive.directory('data/fulltextrss')
+            # copy data directory structure and .htaccess for deny
+            archive.directory('data/')
 
             archive.file('.htaccess')
             archive.file('.nginx.conf')

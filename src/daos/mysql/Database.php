@@ -1,9 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace daos\mysql;
 
 use daos\CommonSqlDatabase;
 use helpers\DatabaseConnection;
+use helpers\StringKeyedArray;
 use Monolog\Logger;
 
 /**
@@ -16,17 +19,12 @@ use Monolog\Logger;
 class Database implements \daos\DatabaseInterface {
     use CommonSqlDatabase;
 
-    /** @var DatabaseConnection database connection */
-    private $connection;
-
-    /** @var Logger */
-    private $logger;
+    private DatabaseConnection $connection;
+    private Logger $logger;
 
     /**
      * establish connection and
      * create undefined tables
-     *
-     * @return void
      */
     public function __construct(DatabaseConnection $connection, Logger $logger) {
         $this->connection = $connection;
@@ -34,6 +32,10 @@ class Database implements \daos\DatabaseInterface {
 
         $this->logger->debug('Establishing MySQL database connection');
 
+        $this->migrate();
+    }
+
+    private function migrate(): void {
         // create tables if necessary
         $result = @$this->exec('SHOW TABLES');
         $tables = [];
@@ -295,17 +297,88 @@ class Database implements \daos\DatabaseInterface {
             $this->exec('INSERT INTO ' . $this->connection->getTableNamePrefix() . 'version (version) VALUES (14)');
             $this->commit();
         }
+        if ($version < 15) {
+            $this->logger->debug('Upgrading database schema to version 15 by ensuring all tags have colors');
+
+            $this->beginTransaction();
+
+            /** @var StringKeyedArray<bool> */
+            $coloredTags = new StringKeyedArray();
+            /** @var StringKeyedArray<string> */
+            $coloredTagsNormalised = new StringKeyedArray();
+            /** @var StringKeyedArray<string> */
+            $tagsWithoutColor = new StringKeyedArray();
+
+            $tags = $this->exec('SELECT tag, LOWER(tag) as normal FROM ' . $this->connection->getTableNamePrefix() . 'tags');
+            foreach ($tags as $tag) {
+                $coloredTags[$tag['tag']] = true;
+                $coloredTagsNormalised[$tag['normal']] = $tag['tag'];
+            }
+
+            $sources = $this->exec('SELECT id, tags, LOWER(tags) as normal FROM ' . $this->connection->getTableNamePrefix() . 'sources');
+            foreach ($sources as $source) {
+                if ($source['tags'] === '') {
+                    continue;
+                }
+
+                $shouldUpdateSourceTags = false;
+
+                $sourceTags = explode(',', $source['tags']);
+                $sourceTagPairs = array_map(
+                    null,
+                    $sourceTags,
+                    explode(',', $source['normal'])
+                );
+                foreach ($sourceTagPairs as $key => [$tag, $normal]) {
+                    // If the tag does not have associated color:
+                    if (!isset($coloredTags[$tag])) {
+                        // Try to match it to a differently-cased tag.
+                        if (isset($coloredTagsNormalised[$normal])) {
+                            $sourceTags[$key] = $coloredTagsNormalised[$normal];
+                            $shouldUpdateSourceTags = true;
+                        } else {
+                            // Otherwise mark it for assigning a color.
+                            $tagsWithoutColor[$normal] = $tag;
+                        }
+                    }
+                }
+
+                if ($shouldUpdateSourceTags) {
+                    $this->exec(
+                        'UPDATE ' . $this->connection->getTableNamePrefix() . 'sources SET tags = :tags WHERE id = :id',
+                        [
+                            'id' => $source['id'],
+                            'tags' => implode(',', $sourceTags),
+                        ]
+                    );
+                }
+            }
+
+            // Add color to all tags without one.
+            foreach ($tagsWithoutColor as $tag) {
+                $this->exec(
+                    'INSERT INTO ' . $this->connection->getTableNamePrefix() . 'tags(tag, color) VALUES (:tag, :color)',
+                    [
+                        'tag' => $tag,
+                        'color' => '#df1818',
+                    ]
+                );
+            }
+
+            $this->exec('INSERT INTO ' . $this->connection->getTableNamePrefix() . 'version (version) VALUES (15)');
+            $this->commit();
+        }
     }
 
     /**
      * wrap insert statement to return id
      *
      * @param string $query sql statement
-     * @param array $params sql params
+     * @param array<string, mixed> $params sql params
      *
      * @return int id after insert
      */
-    public function insert($query, array $params) {
+    public function insert(string $query, array $params): int {
         $this->exec($query, $params);
         $res = $this->exec('SELECT LAST_INSERT_ID() as lastid');
 
@@ -315,10 +388,8 @@ class Database implements \daos\DatabaseInterface {
     /**
      * optimize database by
      * database own optimize statement
-     *
-     * @return void
      */
-    public function optimize() {
+    public function optimize(): void {
         @$this->exec('OPTIMIZE TABLE `' . $this->connection->getTableNamePrefix() . 'sources`, `' . $this->connection->getTableNamePrefix() . 'items`');
     }
 }

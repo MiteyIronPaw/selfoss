@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace daos\pgsql;
 
 /**
@@ -12,5 +14,5 @@ namespace daos\pgsql;
  */
 class Sources extends \daos\mysql\Sources {
     /** @var class-string SQL helper */
-    protected static $stmt = Statements::class;
+    protected static string $stmt = Statements::class;
 }

@@ -1,8 +1,12 @@
 <?php
 
+declare(strict_types=1);
+
 namespace controllers;
 
 use helpers\Authentication;
+use helpers\Request;
+use helpers\StringKeyedArray;
 use helpers\View;
 
 /**
@@ -13,23 +17,25 @@ use helpers\View;
  * @author     Tobias Zeising <tobias.zeising@aditu.de>
  */
 class Tags {
-    /** @var Authentication authentication helper */
-    private $authentication;
+    /** @var ?StringKeyedArray<array{backColor: string, foreColor: string}> cache of tags and associated colors */
+    protected ?StringKeyedArray $tagsColors = null;
 
-    /** @var \daos\Tags tags */
-    private $tagsDao;
+    private Authentication $authentication;
+    private Request $request;
+    private \daos\Tags $tagsDao;
+    private View $view;
 
-    /** @var View view helper */
-    private $view;
-
-    public function __construct(Authentication $authentication, \daos\Tags $tagsDao, View $view) {
+    public function __construct(
+        Authentication $authentication,
+        Request $request,
+        \daos\Tags $tagsDao,
+        View $view
+    ) {
         $this->authentication = $authentication;
+        $this->request = $request;
         $this->tagsDao = $tagsDao;
         $this->view = $view;
     }
-
-    /* @var ?array<string, array{backColor: string, foreColor: string}> cache of tags and associated colors */
-    protected $tagsColors = null;
 
     /**
      * returns item tags as HTML
@@ -37,9 +43,9 @@ class Tags {
      * @param string[] $itemTags tags for this item
      * @param ?array<array{tag: string, color: string}> $tags list of all the tags and their color
      *
-     * @return array<string, array{backColor: string, foreColor: string}>
+     * @return StringKeyedArray<array{backColor: string, foreColor: string}>
      */
-    public function tagsAddColors(array $itemTags, array $tags = null) {
+    public function tagsAddColors(array $itemTags, ?array $tags = null): StringKeyedArray {
         if ($tags === null) {
             if ($this->tagsColors === null) {
                 $this->tagsColors = $this->getTagsWithColors($this->tagsDao->get());
@@ -48,8 +54,8 @@ class Tags {
             $this->tagsColors = $this->getTagsWithColors($tags);
         }
 
-        // assign tag colors
-        $itemTagsWithColors = [];
+        /** @var StringKeyedArray<array{backColor: string, foreColor: string}> Tags with their associated colors */
+        $itemTagsWithColors = new StringKeyedArray();
         foreach ($itemTags as $tag) {
             $tag = trim($tag);
             if (strlen($tag) > 0 && isset($this->tagsColors[$tag])) {
@@ -62,14 +68,17 @@ class Tags {
 
     /**
      * set tag color
-     *
-     * @return void
      */
-    public function color() {
+    public function color(): void {
         $this->authentication->needsLoggedIn();
 
-        // read data
-        parse_str(file_get_contents('php://input'), $data);
+        $data = $this->request->getData();
+
+        if (!is_array($data)) {
+            $this->view->jsonError([
+                'error' => 'The request body needs to contain a dictionary/object.',
+            ]);
+        }
 
         $tag = isset($data['tag']) && ($trimmed = trim($data['tag'])) !== '' ? $trimmed : null;
         $color = isset($data['color']) && ($trimmed = trim($data['color'])) !== '' ? $trimmed : null;
@@ -90,10 +99,8 @@ class Tags {
     /**
      * returns all tags
      * html
-     *
-     * @return void
      */
-    public function listTags() {
+    public function listTags(): void {
         $this->authentication->needsLoggedInOrPublicMode();
 
         $tags = $this->tagsDao->getWithUnread();
@@ -106,13 +113,16 @@ class Tags {
      *
      * @param array<array{tag: string, color: string}> $tags tags to colorize
      *
-     * @return array<string, array{backColor: string, foreColor: string}> tag color array
+     * @return StringKeyedArray<array{backColor: string, foreColor: string}> tag color array
      */
-    private function getTagsWithColors(array $tags) {
-        $assocTags = [];
+    private function getTagsWithColors(array $tags): StringKeyedArray {
+        /** @var StringKeyedArray<array{backColor: string, foreColor: string}> */
+        $assocTags = new StringKeyedArray();
         foreach ($tags as $tag) {
-            $assocTags[$tag['tag']]['backColor'] = $tag['color'];
-            $assocTags[$tag['tag']]['foreColor'] = \helpers\Color::colorByBrightness($tag['color']);
+            $assocTags[$tag['tag']] = [
+                'backColor' => $tag['color'],
+                'foreColor' => \helpers\Color::colorByBrightness($tag['color']),
+            ];
         }
 
         return $assocTags;

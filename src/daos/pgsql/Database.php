@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace daos\pgsql;
 
 use daos\CommonSqlDatabase;
@@ -24,11 +26,8 @@ use Monolog\Logger;
 class Database implements \daos\DatabaseInterface {
     use CommonSqlDatabase;
 
-    /** @var DatabaseConnection database connection */
-    private $connection;
-
-    /** @var Logger */
-    private $logger;
+    private DatabaseConnection $connection;
+    private Logger $logger;
 
     /**
      * establish connection and create undefined tables
@@ -41,6 +40,10 @@ class Database implements \daos\DatabaseInterface {
 
         $this->logger->debug('Establishing PostgreSQL database connection');
 
+        $this->migrate();
+    }
+
+    private function migrate(): void {
         // create tables if necessary
         $result = @$this->exec("SELECT table_name FROM information_schema.tables WHERE table_schema='public'");
         $tables = [];
@@ -279,11 +282,11 @@ class Database implements \daos\DatabaseInterface {
      * wrap insert statement to return id
      *
      * @param string $query sql statement
-     * @param array $params sql params
+     * @param array<string, mixed> $params sql params
      *
      * @return int id after insert
      */
-    public function insert($query, array $params) {
+    public function insert(string $query, array $params): int {
         $res = $this->exec("$query RETURNING id", $params);
 
         return $res[0]['id'];
@@ -296,9 +299,7 @@ class Database implements \daos\DatabaseInterface {
      * enabled by default.
      * See
      * https://www.postgresql.org/docs/9.1/static/runtime-config-autovacuum.html
-     *
-     * @return  void
      */
-    public function optimize() {
+    public function optimize(): void {
     }
 }

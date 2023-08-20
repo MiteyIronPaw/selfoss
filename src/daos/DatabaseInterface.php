@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace daos;
 
 /**
@@ -10,79 +12,63 @@ interface DatabaseInterface {
     public const PARAM_BOOL = 2;
     public const PARAM_CSV = 3;
     public const PARAM_DATETIME = 4;
+    public const PARAM_NULL = 128;
 
     /**
      * Execute SQL statement.
      *
-     * @param string $cmd
-     * @param array|scalar $args
-     *
-     * @return \PDOStatement
+     * @param array<string, mixed> $args
      */
-    public function execute($cmd, $args = []);
+    public function execute(string $cmd, array $args = []): \PDOStatement;
 
     /**
      * Execute SQL statement and fetch the result as an associative array (when applicable).
      *
-     * @param string $cmd
-     * @param array|scalar $args
+     * @param array<string, mixed> $args
      *
-     * @return ?array
-     **/
-    public function exec($cmd, $args = []);
+     * @return array<int, array<string, mixed>>
+     */
+    public function exec(string $cmd, array $args = []): array;
 
     /**
      * wrap insert statement to return id
      *
      * @param string $query sql statement
-     * @param array $params sql params
+     * @param array<string, mixed> $params sql params
      *
      * @return int id after insert
      */
-    public function insert($query, array $params);
+    public function insert(string $query, array $params): int;
 
     /**
      * Quote string
      *
      * @param mixed $value
-     * @param int $type
-     *
-     * @return string
      */
-    public function quote($value, $type = \PDO::PARAM_STR);
+    public function quote($value, int $type = \PDO::PARAM_STR): string;
 
     /**
      * Begin SQL transaction
-     *
-     * @return bool
      */
-    public function beginTransaction();
+    public function beginTransaction(): bool;
 
     /**
      * Rollback SQL transaction
-     *
-     * @return bool
      */
-    public function rollBack();
+    public function rollBack(): bool;
 
     /**
      * Commit SQL transaction
-     *
-     * @return bool
      */
-    public function commit();
+    public function commit(): bool;
 
     /**
      * Optimize database using its own optimize statement.
-     *
-     * @return void
      */
-    public function optimize();
+    public function optimize(): void;
 
     /**
      * Get the current version database schema.
-     *
-     * @return int
      */
-    public function getSchemaVersion();
+    public function getSchemaVersion(): int;
 }

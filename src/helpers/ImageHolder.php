@@ -1,37 +1,30 @@
 <?php
 
+declare(strict_types=1);
+
 namespace helpers;
 
 /**
  * Class holding image data and accompanying metadata.
  */
 class ImageHolder {
-    /** @var string */
-    private $data;
+    private string $data;
     /** @var Image::FORMAT_JPEG|Image::FORMAT_PNG */
-    private $format;
-    /** @var int */
-    private $width;
-    /** @var int */
-    private $height;
+    private string $format;
+    private int $width;
+    private int $height;
 
     /**
-     * @param string $data
      * @param Image::FORMAT_JPEG|Image::FORMAT_PNG $format
-     * @param int $width
-     * @param int $height
      */
-    public function __construct($data, $format, $width, $height) {
+    public function __construct(string $data, string $format, int $width, int $height) {
         $this->data = $data;
         $this->format = $format;
         $this->width = $width;
         $this->height = $height;
     }
 
-    /**
-     * @return string
-     */
-    public function getData() {
+    public function getData(): string {
         return $this->data;
     }
 
@@ -42,17 +35,11 @@ class ImageHolder {
         return $this->format;
     }
 
-    /**
-     * @return int
-     */
-    public function getWidth() {
+    public function getWidth(): int {
         return $this->width;
     }
 
-    /**
-     * @return int
-     */
-    public function getHeight() {
+    public function getHeight(): int {
         return $this->height;
     }
 }

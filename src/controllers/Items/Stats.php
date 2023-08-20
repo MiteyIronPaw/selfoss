@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace controllers\Items;
 
 use helpers\Authentication;
@@ -9,20 +11,11 @@ use helpers\View;
  * Controller for viewing item statistics
  */
 class Stats {
-    /** @var Authentication authentication helper */
-    private $authentication;
-
-    /** @var \daos\Items items */
-    private $itemsDao;
-
-    /** @var \daos\Sources sources */
-    private $sourcesDao;
-
-    /** @var \daos\Tags tags */
-    private $tagsDao;
-
-    /** @var View view helper */
-    private $view;
+    private Authentication $authentication;
+    private \daos\Items $itemsDao;
+    private \daos\Sources $sourcesDao;
+    private \daos\Tags $tagsDao;
+    private View $view;
 
     public function __construct(Authentication $authentication, \daos\Items $itemsDao, \daos\Sources $sourcesDao, \daos\Tags $tagsDao, View $view) {
         $this->authentication = $authentication;
@@ -35,10 +28,8 @@ class Stats {
     /**
      * returns current basic stats
      * json
-     *
-     * @return void
      */
-    public function stats() {
+    public function stats(): void {
         $this->authentication->needsLoggedInOrPublicMode();
 
         $stats = $this->itemsDao->stats();
@@ -46,7 +37,7 @@ class Stats {
         $tags = $this->tagsDao->getWithUnread();
 
         foreach ($tags as $tag) {
-            if (strpos($tag['tag'], '#') !== 0) {
+            if (!str_starts_with($tag['tag'], '#')) {
                 continue;
             }
             $stats['unread'] -= $tag['unread'];

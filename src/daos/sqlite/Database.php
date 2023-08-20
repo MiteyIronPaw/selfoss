@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace daos\sqlite;
 
 use daos\CommonSqlDatabase;
@@ -17,11 +19,8 @@ use Monolog\Logger;
 class Database implements \daos\DatabaseInterface {
     use CommonSqlDatabase;
 
-    /** @var DatabaseConnection database connection */
-    private $connection;
-
-    /** @var Logger */
-    private $logger;
+    private DatabaseConnection $connection;
+    private Logger $logger;
 
     /**
      * establish connection and create undefined tables
@@ -34,6 +33,10 @@ class Database implements \daos\DatabaseInterface {
 
         $this->logger->debug('Establishing SQLite database connection');
 
+        $this->migrate();
+    }
+
+    private function migrate(): void {
         // create tables if necessary
         $result = @$this->exec('SELECT name FROM sqlite_master WHERE type = "table"');
         $tables = [];
@@ -297,11 +300,11 @@ class Database implements \daos\DatabaseInterface {
      * wrap insert statement to return id
      *
      * @param string $query sql statement
-     * @param array $params sql params
+     * @param array<string, mixed> $params sql params
      *
      * @return int id after insert
      */
-    public function insert($query, array $params) {
+    public function insert(string $query, array $params): int {
         $this->exec($query, $params);
         $res = $this->exec('SELECT last_insert_rowid() as lastid');
 
@@ -310,10 +313,8 @@ class Database implements \daos\DatabaseInterface {
 
     /**
      * optimize database by database own optimize statement
-     *
-     * @return  void
      */
-    public function optimize() {
+    public function optimize(): void {
         @$this->exec('
             VACUUM;
         ');
@@ -321,27 +322,27 @@ class Database implements \daos\DatabaseInterface {
 
     /**
      * Initialize 'lastentry' Field in Source table during database upgrade
-     *
-     * @return void
      */
-    private function initLastEntryFieldDuringUpgrade() {
+    private function initLastEntryFieldDuringUpgrade(): void {
         $sources = @$this->exec('SELECT id FROM sources');
 
         // have a look at each entry in the source table
         foreach ($sources as $current_src) {
             // get the date of the newest entry found in the database
             $latestEntryDate = @$this->exec(
-                'SELECT datetime FROM items WHERE source=? ORDER BY datetime DESC LIMIT 0, 1',
-                $current_src['id']
+                'SELECT datetime FROM items WHERE source=:id ORDER BY datetime DESC LIMIT 0, 1',
+                [
+                    'id' => $current_src['id'],
+                ]
             );
 
             // if an entry for this source was found in the database, write the date of the newest one into the sources table
             if (isset($latestEntryDate[0]['datetime'])) {
                 @$this->exec(
-                    'UPDATE sources SET lastentry=? WHERE id=?',
+                    'UPDATE sources SET lastentry=:entry WHERE id=:id',
                     [
-                        strtotime($latestEntryDate[0]['datetime']),
-                        $current_src['id'],
+                        'entry' => strtotime($latestEntryDate[0]['datetime']),
+                        'id' => $current_src['id'],
                     ]
                 );
             }

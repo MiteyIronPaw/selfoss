@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace controllers;
 
 use helpers;
@@ -9,11 +11,8 @@ use helpers\View;
  * Controller for user related tasks
  */
 class Authentication {
-    /** @var helpers\Authentication authentication helper */
-    private $authentication;
-
-    /** @var View view helper */
-    private $view;
+    private helpers\Authentication $authentication;
+    private View $view;
 
     public function __construct(helpers\Authentication $authentication, View $view) {
         $this->authentication = $authentication;
@@ -23,10 +22,8 @@ class Authentication {
     /**
      * login for api json access
      * json
-     *
-     * @return void
      */
-    public function login() {
+    public function login(): void {
         $error = null;
 
         if (isset($_REQUEST['username'])) {
@@ -65,10 +62,8 @@ class Authentication {
     /**
      * logout for api json access
      * json
-     *
-     * @return void
      */
-    public function logout() {
+    public function logout(): void {
         $this->authentication->logout();
         $this->view->jsonSuccess([
             'success' => true,
